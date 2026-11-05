@@ -66,5 +66,13 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.4"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wm17717783258-boop/agentdeck-super.git"
+  },
+  "homepage": "https://github.com/wm17717783258-boop/agentdeck-super#readme",
+  "bugs": {
+    "url": "https://github.com/wm17717783258-boop/agentdeck-super/issues"
+  }
 }
