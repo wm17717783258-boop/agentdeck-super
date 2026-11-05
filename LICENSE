@@ -1,0 +1,34 @@
+MIT License
+
+Copyright (c) 2026 王冕 (Wang Mian) and agentdeck-super contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+关于收费部分（与上面 MIT 授权并不冲突，务必读一遍）：
+
+1. 本仓库的**代码**是 MIT 的，你 fork、改、自建、商用都行，不需要给钱。
+2. **付费的是我们托管的服务**：跨机协作中继（relay）、云房间、云端额度、以及付费皮肤素材包。
+   这些东西不在 MIT 授权范围内 —— 我们自家的 relay 只对持有有效授权码（license key）的房主开房，
+   和你能不能改代码无关，是服务端的事。
+3. 任何人都可以用 MIT 的代码起**自己的** relay、发**自己的**授权码（`tools/license-cli.mjs` 有全部实现），
+   给自己的团队用，一分钱不用付，也不需要通知我们。
+4. 付费皮肤是**素材包**（SVG 等美术资源），采用「购买后个人/团队内可用，不得转售」的条款；
+   免费皮肤永远开放，删除任何皮肤都不影响插件任何功能。

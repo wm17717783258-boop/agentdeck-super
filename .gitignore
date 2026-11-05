@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+pnpm-lock.yaml
+
+# 打包产物
+*.tgz
+*.log
+
+# 本地密钥（绝不提交）
+.secrets/
+
+# 运行时数据（每个用户自己的）
+.relay-data/
+.agentdeck/
+.agentdeck-issuer/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 证据与临时
+tmp/
+*.tmp

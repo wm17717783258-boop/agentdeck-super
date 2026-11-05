@@ -1,0 +1,10 @@
+# agentdeck-super 的 bundle patch —— 把超级 Agent 小组插件挂进 DSH 配置树
+#
+# 约定（市场预检会检查）：
+#   - id 必须与包名一致，且是全局唯一值
+#   - `id: 值` 这一行之后直接换行，不能写行尾注释
+#   - name 指向包入口（package.json 的 main）
+
+- insert:
+    - id: agentdeck-super
+      name: 'agentdeck-super'

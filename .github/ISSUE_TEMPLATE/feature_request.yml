@@ -1,0 +1,29 @@
+name: 功能建议
+description: 想让某个 Agent 接进来 / 想加一种协作方式
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        最有用的建议长这样：「我有一台 XX Agent，它只能用 YY 方式调用，我想让它进组干活」——直接决定下一个适配器写谁。
+  - type: textarea
+    id: what
+    attributes:
+      label: 你想做什么
+      placeholder: 我想把公司内网的 Agent 拉进来一起改代码
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: 它现在怎么被调用
+      placeholder: HTTP POST /run，SSE 流式返回；或 CLI `myagent -p "prompt"`
+    validations:
+      required: false
+  - type: textarea
+    id: why
+    attributes:
+      label: 现在的替代方案缺什么
+    validations:
+      required: false

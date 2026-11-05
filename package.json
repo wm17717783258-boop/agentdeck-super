@@ -1,0 +1,70 @@
+{
+  "name": "agentdeck-super",
+  "version": "1.4.1",
+  "description": "超级 Agent + 任意 Agent 小组协作：一个会自己干活的 Agent，还能把本机 CLI、ACP、OpenAI 兼容、桌面 App、自研桥接的任意 Agent 编成一个小组，分工并行交付一个真实项目。",
+  "type": "module",
+  "main": "lib/index.js",
+  "icon": "assets/logo.png",
+  "exports": {
+    ".": "./lib/index.js",
+    "./engine/*": "./lib/engine/*",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "tools",
+    "assets",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"tests/*.test.mjs\"",
+    "smoke": "node tests/e2e-local.mjs",
+    "relay": "node tools/relay-server.mjs --port 8787",
+    "license": "node tools/license-cli.mjs",
+    "publish:check": "node tools/publish-npm.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "agent",
+    "multi-agent",
+    "orchestration",
+    "agentdeck",
+    "agent-team",
+    "collaboration",
+    "claude",
+    "codex",
+    "gemini",
+    "pet",
+    "room"
+  ],
+  "author": "王冕 (Wang Mian)",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.1.7-rc.2": "incompatible",
+        "0.2.0-rc.1": "unknown",
+        "0.2.0-rc.2": "unknown",
+        "0.2.1-rc.2": "compatible",
+        "0.2.1-rc.5": "compatible"
+      }
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4"
+  },
+  "license": "MIT"
+}
