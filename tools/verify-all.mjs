@@ -30,7 +30,7 @@ const NO_RECORD = argv.includes('--no-record');
 const SUITES = [
   {
     id: 'gate',
-    what: '全量回归（711 条单测）+ 红队 11 条',
+    what: '全量回归（726 条单测）+ 红队 11 条',
     cmd: ['tools/verify-security.mjs'],
     evidence: [`gate-${ver}.txt`, `security-redteam-${ver}.txt`],
     slow: true,
@@ -89,6 +89,13 @@ const SUITES = [
     cmd: ['tools/verify-installed-security.mjs'],
     evidence: [`installed-security-${ver}.txt`],
     optional: true,   // profile 里没装就能跳过，不算失败
+  },
+  {
+    id: 'plugin-install',
+    what: '插件本体：8 个宿主逐个「装 → 卸 → 还原」（json/toml 两种配置形状，含不污染、幂等、dry-run）',
+    cmd: ['--test', '--test-concurrency=1', 'tests/plugin-install.test.mjs'],
+    evidence: [],
+    optional: true,   // 它是 node --test，不是写证据的脚本；单独跑更快，跑法见 --list
   },
   {
     id: 'hosts',

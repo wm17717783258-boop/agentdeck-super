@@ -132,7 +132,29 @@ async function cmdInstall() {
     print({ hint: 'nexi install <host-id> 或 --all', hosts: hosts.map((h) => ({ id: h.id, label: h.label, installed: h.installed, path: h.path })) });
     return 0;
   }
-  const res = installHost(target, { ...opts, path: process.env.NEXI_HOST_CONFIG || undefined });
+  // 目标文件从哪来，优先级写清楚（以前这里只认环境变量，命令行传的路径会被**静默丢掉**，
+  // 结果就是"我明明指了别的文件，它却写了宿主真实配置"——真机上踩过，还污染了 4 个用户目录）：
+  //   ① 命令行显式给的路径（第 2 个位置参数）
+  //   ② 环境变量 NEXI_HOST_CONFIG
+  //   ③ 宿主默认路径
+  // 另外：宿主没装时，除非显式指定路径或加 --force，**不许**往它默认路径写配置——
+  // 没装的宿主就该保持没装，不能因为我们install一下就在用户机器上留个文件。
+  const explicit = typeof flags._[1] === 'string' && flags._[1].trim() ? flags._[1].trim() : '';
+  const targetPath = explicit || process.env.NEXI_HOST_CONFIG || undefined;
+  if (!targetPath && !opts.force) {
+    const found = detectHosts().find((h) => h.id === target);
+    if (found && !found.installed) {
+      print({
+        ok: false,
+        code: 'host_not_installed',
+        id: target,
+        hint: `本机没装 ${found.label}，不往它的默认路径写配置。要真装请二者之一：① 显式给路径 nexi install ${target} <文件路径>；② 确认要写默认路径再加 --force。`,
+        wouldWrite: found.path,
+      });
+      return 1;
+    }
+  }
+  const res = installHost(target, { ...opts, path: targetPath });
   print(res);
   return res.ok ? 0 : 1;
 }
@@ -149,7 +171,12 @@ async function cmdUninstall() {
     print({ hint: 'nexi uninstall <host-id> 或 --all', hosts: HOSTS.map((h) => h.id) });
     return 0;
   }
-  const res = uninstallHost(target, { dryRun: flags.dryRun, path: process.env.NEXI_HOST_CONFIG || undefined });
+  // 和 install 一样的路径优先级：命令行显式路径 > NEXI_HOST_CONFIG > 宿主默认路径。
+  // 以前这里也只认环境变量，命令行传的路径被静默丢掉，
+  // 于是"卸载成功了"其实卸的是宿主默认路径、你指的那个文件一个字没动。
+  const explicit = typeof flags._[1] === 'string' && flags._[1].trim() ? flags._[1].trim() : '';
+  const targetPath = explicit || process.env.NEXI_HOST_CONFIG || undefined;
+  const res = uninstallHost(target, { dryRun: flags.dryRun, path: targetPath });
   print(res);
   return res.ok ? 0 : 1;
 }

@@ -1,0 +1,58 @@
+插件本体验收：8 个宿主逐个「装 → 卸 → 还原」（1.10.0）
+======================================================
+
+产品形态是**插件** —— 能装进主流 Agent 直接用。所以核心验收不是"我们自己的页面好不好看"，
+而是"装进各个宿主能不能用"。本文件记录的就是这一层。
+
+一、覆盖的 8 个宿主与配置形状
+  json 类（mcpServers.nexi）：
+    Claude Desktop   ~/AppData/Roaming/Claude/claude_desktop_config.json
+    Claude Code      ~/.claude.json
+    Cursor           ~/.cursor/mcp.json
+    Windsurf         ~/.codeium/windsurf/mcp_config.json
+    Cline (VS Code)  ~/AppData/Roaming/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+    Continue         ~/.continue/config.json
+    Gemini CLI       ~/.gemini/settings.json
+  toml 类（[mcp_servers.nexi]）：
+    Codex            ~/.codex/config.toml
+
+二、验收方式
+  tests/plugin-install.test.mjs —— 15 条，全过
+  全程只写临时目录，**绝不碰用户真实宿主配置**。
+
+  逐个宿主验：
+    · 装到指定路径 → 路径就是给的那个；文件是合法 JSON；含 mcpServers.nexi；
+      command 有值、args 指向 nexi.mjs
+    · 卸后 nexi 必须消失（文件该删就删）
+    · Codex 单独验 TOML 的 [mcp_servers.nexi] 段落
+
+  通用行为验：
+    · 没装的宿主且没给路径 → **拒绝写默认路径**（宁可不装，不许污染用户目录）
+    · 装进已有配置 → 别人的 server、顶层字段、嵌套字段**原样保留**，只多出 nexi
+    · 重复装 → 幂等（第二次 changed=false），不写重复条目
+    · 配置是坏 JSON → 不崩、不清空、如实报告
+    · dry-run → 给预览、**一个字节都不动**
+    · 不认识的宿主 id → 明确拒绝，不猜
+
+三、本轮真机抓到并修掉的两个 bug（都写成了断言）
+  ① install 带 --force 和路径：命令行给的目标路径被**静默丢掉**
+     —— 结果"我明明指了别的文件，它却写了宿主真实配置"。
+     实测后果：往 4 个用户目录（.cursor / .codeium/windsurf / .continue / Cline）
+     各写了一份配置，而那几个宿主本机根本没装。（已清理干净）
+     修法：路径优先级写成 ① 命令行显式路径 ② NEXI_HOST_CONFIG ③ 宿主默认路径；
+     并且没装的宿主除非显式给路径或 --force，**不许**写默认路径。
+  ② uninstall 带路径：同样丢掉路径 ——
+     "卸载成功"其实是卸了默认路径，你指的那个文件一个字没动（nexi 还留着）。
+     修法：与 install 同一套优先级。
+
+四、已装宿主：真调用认证（与门槛①对应）
+  证据：docs/evidence/hosts-1.10.0.txt
+  ✅ Claude Code    装→claude mcp list 宿主自报 nexi→卸→配置逐字节还原
+  ✅ Codex          装→codex mcp list 宿主自报 nexi→卸→配置逐字节还原
+  ✅ Gemini CLI     装→gemini mcp list 宿主自报 nexi→卸→配置逐字节还原
+  🟡 Claude Desktop  只到配置层（GUI 程序，没有可非交互调用的 mcp 子命令）→ 标「实验性」
+  ⚪ Cursor / Windsurf / Cline / Continue  本机未安装 —— **拒绝伪造配置**
+
+五、边界（照写）
+  ✗ 4 个未安装的宿主，只能验"配置格式对不对"，验不了"宿主认不认"——因为本机没装它们。
+  ✗ 没装的宿主不给它们写默认路径：宁可少认证一个，也不往用户机器上塞文件。

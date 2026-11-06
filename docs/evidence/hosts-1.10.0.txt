@@ -1,12 +1,12 @@
 # 宿主认证矩阵 · agentdeck-super 1.10.0
 
-· 时间：2026-11-06T13:24:28.041Z（本机时区 Asia/Shanghai）
+· 时间：2026-11-06T13:57:55.318Z（本机时区 Asia/Shanghai）
 · 机器：win32-x64 / Node v24.15.0
 · 口径：每台都跑「装 → 让宿主自己确认 → 卸 → 配置逐字节还原」，跑不动的老实标注
 
 | 宿主 | 层级 | 结论 | 依据 |
 | --- | --- | --- | --- |
-| Claude Desktop（`claude-desktop`） | A | 🟡 只验到配置层（宿主命令行不在本机，标「实验性」） | 无法真调用：Claude Desktop 是 GUI 应用（claude-desktop.exe --version 可跑，但 --help / mcp list 会拉起桌面窗口并挂住），没有可非交互调用的 mcp 子命令；配置逐字节等于安装前 sha256=c430fd52b52db503…（顺序/空白有差，已用快照原样写回并复核） |
+| Claude Desktop（`claude-desktop`） | A | 🟡 只验到配置层（宿主命令行不在本机，标「实验性」） | 无法真调用：Claude Desktop 是 GUI 应用（claude-desktop.exe --version 可跑，但 --help / mcp list 会拉起桌面窗口并挂住），没有可非交互调用的 mcp 子命令；配置逐字节等于安装前 sha256=8765e169287e5ca4…（顺序/空白有差，已用快照原样写回并复核） |
 | Claude Code（`claude-code`） | A | ✅ 已认证（装→调→卸→还原 四步） | claude mcp list → 宿主自己报出 nexi；配置逐字节等于安装前 sha256=5c102fed3af69f07…（顺序/空白有差，已用快照原样写回并复核） |
 | Cursor（`cursor`） | A | ⚪ 未安装（不伪造配置） | 宿主未安装 |
 | Windsurf（`windsurf`） | A | ⚪ 未安装（不伪造配置） | 宿主未安装 |
@@ -19,27 +19,27 @@
 
 · 配置文件：C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json
   ✔ detect：C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json
-  ✔ snapshot：638 字符 sha256=c430fd52b52db503…
-  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T13-24-23-138Z-verify），本轮从干净配置开始
-  ✔ install：写入成功；备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T13-24-23-138Z-verify；sha256=c430fd52b52db503…
+  ✔ snapshot：635 字符 sha256=8765e169287e5ca4…
+  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T13-57-46-868Z-verify），本轮从干净配置开始
+  ✔ install：写入成功；备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T13-57-46-868Z-verify；sha256=ccc5f4c264ea7678…
   ✖ call：无法真调用：Claude Desktop 是 GUI 应用（claude-desktop.exe --version 可跑，但 --help / mcp list 会拉起桌面窗口并挂住），没有可非交互调用的 mcp 子命令
-  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T13-24-23-138Z-verify）
-  ✔ restore：配置逐字节等于安装前 sha256=c430fd52b52db503…（顺序/空白有差，已用快照原样写回并复核）
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T13-57-46-868Z-verify）
+  ✔ restore：配置逐字节等于安装前 sha256=8765e169287e5ca4…（顺序/空白有差，已用快照原样写回并复核）
 
 ## Claude Code（`claude-code`）· ✅ 已认证（装→调→卸→还原 四步）
 
 · 配置文件：C:\Users\王冕\.claude.json
   ✔ detect：C:\Users\王冕\.claude.json
   ✔ snapshot：1768 字符 sha256=5c102fed3af69f07…
-  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T13-24-23-138Z-verify），本轮从干净配置开始
-  ✔ install：写入成功；备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T13-24-23-138Z-verify；sha256=5c102fed3af69f07…
+  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T13-57-46-868Z-verify），本轮从干净配置开始
+  ✔ install：写入成功；备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T13-57-46-868Z-verify；sha256=5c102fed3af69f07…
   ✔ call：claude mcp list → 宿主自己报出 nexi
     ```
     Checking MCP server health…
     
     nexi: C:\Users\王冕\Apps\nodejs\node.exe D:\agentdeck-super\bin\nexi.mjs mcp - √ Connected
     ```
-  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T13-24-23-138Z-verify）
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T13-57-46-868Z-verify）
   ✔ restore：配置逐字节等于安装前 sha256=5c102fed3af69f07…（顺序/空白有差，已用快照原样写回并复核）
 
 ## Cursor（`cursor`）· ⚪ 未安装（不伪造配置）
@@ -57,8 +57,8 @@
 · 配置文件：C:\Users\王冕\.codex\config.toml
   ✔ detect：C:\Users\王冕\.codex\config.toml
   ✔ snapshot：4789 字符 sha256=dd3842ee8d442a70…
-  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T13-24-23-138Z-verify），本轮从干净配置开始
-  ✔ install：写入成功；备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T13-24-23-138Z-verify；sha256=dd3842ee8d442a70…
+  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T13-57-46-868Z-verify），本轮从干净配置开始
+  ✔ install：写入成功；备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T13-57-46-868Z-verify；sha256=dd3842ee8d442a70…
   ✔ call：codex mcp list → 宿主自己报出 nexi
     ```
     Name       Command                                                                                          Args                                                                                                                                                                                                                                                                          Env                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  Cwd                                                                                Status    Auth       
@@ -67,7 +67,7 @@
     nexi       C:\Users\王冕\Apps\nodejs\node.exe                                                                 D:\agentdeck-super\bin\nexi.mjs mcp                                         
     …（截断，共 6359 字符）
     ```
-  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T13-24-23-138Z-verify）
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T13-57-46-868Z-verify）
   ✔ restore：配置逐字节等于安装前 sha256=dd3842ee8d442a70…（顺序/空白有差，已用快照原样写回并复核）
 
 ## Cline (VS Code)（`cline`）· ⚪ 未安装（不伪造配置）
@@ -96,6 +96,6 @@
     
     ○ nexi: C:\Users\王冕\Apps\nodejs\node.exe D:\agentdeck-super\bin\nexi.mjs mcp (stdio) - Disabled
     ```
-  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.gemini\settings.json.nexi-backup-2026-11-06T13-24-23-138Z-verify）
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.gemini\settings.json.nexi-backup-2026-11-06T13-57-46-868Z-verify）
   ✔ restore：配置逐字节等于安装前 sha256=…（装前不存在，已把新建的文件删掉）
 
