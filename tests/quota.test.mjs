@@ -6,7 +6,9 @@
  *   2. 超限时给的是人话 + 升级建议，不是一句冷冰冰的 false；
  *   3. Infinity（企业版不限）经过 JSON 一圈后仍然是"不限"，不能被当成 0 拦死；
  *   4. 任何脏参数都不抛异常，一律降级放行（宁可放行，不挡付费用户）；
- *   5. 免费档「安装 → 记忆 → 串门 → 任务」四件事一件都不拦（rooms=0 只管跨机云房间）；
+ *   5. 免费档「安装 → 记忆 → 串门 → 任务」四件事一件都不拦；rooms 是**群组房间总数**
+ *      （方案定价：免费 3 / 协作 20 / 工作室 50 / 企业不限），跨机持久云房间另由
+ *      license.TIERS.cloudRooms 守（免费 0 个）；
  *   6. remaining 计算正确；
  *   7. countUsed() 能按真实落盘位置数出 rooms/meetings/automations/twinEntries。
  */
@@ -16,6 +18,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+
+import { TIERS } from '../lib/license.js';
 
 import {
   DEFAULT_LIMITS,
@@ -48,18 +52,33 @@ function cleanup(...roots) {
 
 /* ────────────────────────── 1. 四档限额表 ────────────────────────── */
 
-test('四档限额表与任务单一致（云房间/席位必须和 license.TIERS 对得上）', () => {
-  // 这两列是对外承诺（定价页、deck_license 都从 license.TIERS 读），所以不能自己另写一套数。
-  assert.deepEqual(DEFAULT_LIMITS.free, { rooms: 0, meetings: 3, automations: 3, twinEntries: 200, seats: 3 });
-  assert.deepEqual(DEFAULT_LIMITS.plus, { rooms: 1, meetings: 20, automations: 20, twinEntries: 2000, seats: 8 });
-  assert.deepEqual(DEFAULT_LIMITS.studio, { rooms: 5, meetings: 200, automations: 200, twinEntries: 20000, seats: 30 });
+test('四档限额表与产品方案一致（房间/会议/自动化/席位必须和 license.TIERS 对得上）', () => {
+  // 这四列是对外承诺（定价页、deck_license 都从 license.TIERS 读），所以不能自己另写一套数。
+  // 口径来自产品方案定价章节：免费 3 房间 / 每月 5 场会 / 3 个自动化；协作 20 / 30 / 20；
+  // 工作室 50 / 不限 / 100；企业 不限 / 不限 / 不限。
+  assert.deepEqual(DEFAULT_LIMITS.free, { rooms: 3, meetings: 5, automations: 3, twinEntries: 200, seats: 3 });
+  assert.deepEqual(DEFAULT_LIMITS.plus, { rooms: 20, meetings: 30, automations: 20, twinEntries: 2000, seats: 8 });
+  assert.deepEqual(DEFAULT_LIMITS.studio, { rooms: 50, meetings: 999, automations: 100, twinEntries: 20000, seats: 30 });
   assert.deepEqual(DEFAULT_LIMITS.business, {
-    rooms: 50,
+    rooms: 999,
     meetings: Infinity,
     automations: Infinity,
     twinEntries: Infinity,
     seats: 200,
   });
+
+  // 真正的防漂移断言：拿 license.TIERS 走一遍 createQuota，四列必须和默认表逐个相等。
+  // 只要有人只改一边（定价页改了、配额表没改，或者反过来），这条立刻红。
+  const fromLicense = createQuota({ tiers: TIERS });
+  for (const tier of ['free', 'plus', 'studio', 'business']) {
+    for (const kind of ['rooms', 'meetings', 'automations', 'seats']) {
+      assert.equal(
+        fromLicense.limits[tier][kind],
+        DEFAULT_LIMITS[tier][kind],
+        `${tier}.${kind} 在 license.TIERS 和 quota.DEFAULT_LIMITS 里不一致`,
+      );
+    }
+  }
   // 别名导出与默认表是同一份，且冻结（防止调用方改默认值）
   assert.equal(LIMITS, DEFAULT_LIMITS);
   assert.ok(Object.isFrozen(DEFAULT_LIMITS));
@@ -93,16 +112,16 @@ test('限额内放行，remaining 计算正确', () => {
   const q = createQuota();
   const meeting = q.check('plus', 'meetings', 5);
   assert.equal(meeting.ok, true);
-  assert.equal(meeting.limit, 20);
+  assert.equal(meeting.limit, 30);
   assert.equal(meeting.used, 5);
-  assert.equal(meeting.remaining, 15);
+  assert.equal(meeting.remaining, 25);
   assert.equal(meeting.unlimited, false);
   assert.equal(meeting.degraded, false);
 
   const studioRoom = q.check('studio', 'rooms', 4);
   assert.equal(studioRoom.ok, true);
-  assert.equal(studioRoom.limit, 5);
-  assert.equal(studioRoom.remaining, 1);
+  assert.equal(studioRoom.limit, 50);
+  assert.equal(studioRoom.remaining, 46);
 
   const memory = q.check('free', 'twinEntries', 199);
   assert.equal(memory.ok, true);
@@ -111,18 +130,18 @@ test('限额内放行，remaining 计算正确', () => {
 
 test('超限拦截给中文档位 + 数量 + 升级建议', () => {
   const q = createQuota();
-  const meeting = q.check('free', 'meetings', 3);
+  const meeting = q.check('free', 'meetings', 5);
   assert.equal(meeting.ok, false);
-  assert.equal(meeting.used, 3);
+  assert.equal(meeting.used, 5);
   assert.equal(meeting.remaining, 0);
   assert.equal(meeting.upgradeTo, 'plus');
   assert.match(meeting.reason, /免费版/);
-  assert.match(meeting.reason, /最多 3 场会议/);
-  assert.match(meeting.reason, /已用 3 场/);
+  assert.match(meeting.reason, /最多 5 场会议/);
+  assert.match(meeting.reason, /已用 5 场/);
   assert.match(meeting.reason, /协作版/);
-  assert.match(meeting.reason, /20 场会议/);
+  assert.match(meeting.reason, /30 场会议/);
 
-  const automation = q.check('studio', 'automations', 200);
+  const automation = q.check('studio', 'automations', 100);
   assert.equal(automation.ok, false);
   assert.equal(automation.upgradeTo, 'business');
   assert.match(automation.reason, /工作室版/);
@@ -136,15 +155,26 @@ test('超限拦截给中文档位 + 数量 + 升级建议', () => {
   assert.match(seats.reason, /最高档/);
 });
 
-test('免费档 rooms=0 只拦跨机云房间，并说明本地不受影响', () => {
+test('免费档 3 个群组房间：第 4 个才拦；跨机持久云房间是另一层门控', () => {
   const q = createQuota();
-  const room = q.check('free', 'rooms', 0);
+  // 前 3 个照常建（方案定价：免费版 3 个群组房间），不能一上来就拦
+  assert.equal(q.check('free', 'rooms', 0).ok, true);
+  assert.equal(q.check('free', 'rooms', 2).ok, true);
+
+  const room = q.check('free', 'rooms', 3);
   assert.equal(room.ok, false);
-  assert.equal(room.limit, 0);
+  assert.equal(room.limit, 3);
   assert.equal(room.upgradeTo, 'plus');
-  assert.match(room.reason, /不含云房间/);
-  assert.match(room.reason, /本地房间/);
-  assert.match(room.reason, /跨机/);
+  assert.match(room.reason, /免费版/);
+  assert.match(room.reason, /最多 3 个群组房间/);
+  assert.match(room.reason, /协作版/);
+  assert.match(room.reason, /20 个群组房间/);
+
+  // 跨机持久云房间由 license 档位单独守（不在 quota.rooms 里）：免费 0 个，协作 20 个。
+  // 两层门控各管一件事：quota 管总量，entitlements.cloudRooms 管能不能走中继。
+  assert.equal(TIERS.free.cloudRooms, 0);
+  assert.equal(TIERS.plus.cloudRooms, 20);
+  assert.equal(TIERS.free.localRooms, 3);
 });
 
 /* ────────────────────────── 3. 免费档四件核心事不拦 ────────────────────────── */
@@ -174,13 +204,13 @@ test('免费档「安装 → 记忆 → 串门 → 任务」四件事一件都�
   assert.equal(task.ok, true);
   assert.equal(task.unmetered, true);
 
-  // 本地房间也属于"免费版照常"，别被 rooms=0 连坐
-  const localRoom = q.check('free', 'localRooms', 10);
+  // 本地群组房间也计入 rooms（方案：免费 3 个）——不是"随便建"，但也绝不是 0：
+  // 前 3 个必须能建，否则免费版连群组都开不起来；第 4 个才提示升级。
+  const localRoom = q.check('free', 'localRooms', 2);
   assert.equal(localRoom.ok, true);
-  assert.equal(localRoom.unmetered, true);
-
-  // 但跨机云房间确实要付费（rooms=0 的真实含义）
-  assert.equal(q.check('free', 'rooms', 0).ok, false);
+  assert.equal(localRoom.kind, 'rooms'); // 别名归一：localRooms / cloudRooms 都是 rooms
+  assert.equal(q.check('free', 'localRooms', 3).ok, false);
+  assert.equal(q.check('free', 'cloudRooms', 2).ok, true);
 });
 
 /* ────────────────────────── 4. Infinity / JSON 往返 ────────────────────────── */
@@ -198,7 +228,7 @@ test('企业版不限：Infinity 不经过 JSON 也不会被当成 0', () => {
   assert.equal(roundTripped.business.meetings, null);
   const q2 = createQuota({ tiers: roundTripped });
   assert.equal(q2.limits.business.meetings, Infinity);
-  assert.equal(q2.limits.business.rooms, 50);
+  assert.equal(q2.limits.business.rooms, 999);
   assert.equal(q2.check('business', 'meetings', 1_000_000).ok, true);
   assert.equal(q2.check('business', 'meetings', 1_000_000).unlimited, true);
 
@@ -273,36 +303,36 @@ test('createQuota 对脏参数也不抛，回退默认表', () => {
   assert.doesNotThrow(() => createQuota('nope'));
   assert.doesNotThrow(() => createQuota({ tiers: 'nope' }));
   const fallback = createQuota({ tiers: 'nope' });
-  assert.equal(fallback.limits.free.meetings, 3);
-  assert.equal(fallback.limits.business.rooms, 50);
+  assert.equal(fallback.limits.free.meetings, 5);
+  assert.equal(fallback.limits.business.rooms, 999);
 });
 
 /* ────────────────────────── 6. 覆盖表 / 批量检查 / 小工具 ────────────────────────── */
 
 test('createQuota({tiers}) 只覆盖给了的字段，并兼容 license 字段名', () => {
-  const q = createQuota({ tiers: { free: { meetings: 5 }, plus: { cloudRooms: 2 } } });
-  assert.equal(q.limits.free.meetings, 5);
+  const q = createQuota({ tiers: { free: { meetings: 9 }, plus: { cloudRooms: 2 } } });
+  assert.equal(q.limits.free.meetings, 9);
   assert.equal(q.limits.plus.rooms, 2); // cloudRooms 别名
-  assert.equal(q.limits.free.rooms, 0); // 没覆盖的沿用默认
+  assert.equal(q.limits.free.rooms, 3); // 没覆盖的沿用默认
   assert.equal(q.limits.free.automations, 3);
 
-  assert.equal(q.check('free', 'meetings', 4).ok, true);
-  assert.equal(q.check('free', 'meetings', 4).remaining, 1);
-  assert.equal(q.check('free', 'meetings', 5).ok, false);
+  assert.equal(q.check('free', 'meetings', 8).ok, true);
+  assert.equal(q.check('free', 'meetings', 8).remaining, 1);
+  assert.equal(q.check('free', 'meetings', 9).ok, false);
   assert.equal(q.check('plus', 'rooms', 1).ok, true);
   assert.equal(q.check('plus', 'rooms', 2).ok, false);
 });
 
 test('limitOf / upgradeOf / checkMany 行为稳定', () => {
   const q = createQuota();
-  assert.equal(q.limitOf('free', 'meetings'), 3);
+  assert.equal(q.limitOf('free', 'meetings'), 5);
   assert.equal(q.limitOf('business', 'meetings'), Infinity);
   assert.equal(q.limitOf('nope', 'meetings'), Infinity); // 认不出=不限
   assert.equal(q.upgradeOf('free'), 'plus');
   assert.equal(q.upgradeOf('studio'), 'business');
   assert.equal(q.upgradeOf('business'), null);
 
-  const batch = q.checkMany('free', { meetings: 3, twinEntries: 200, install: 0, garbage: 1 });
+  const batch = q.checkMany('free', { meetings: 5, twinEntries: 200, install: 0, garbage: 1 });
   assert.equal(Object.keys(batch).length, 4);
   assert.equal(batch.meetings.ok, false);
   assert.equal(batch.twinEntries.ok, false);
@@ -355,10 +385,12 @@ test('countUsed 按房间/会议/自动化/记忆的真实落盘位置统计', (
     assert.equal(used.roots.length, 2);
     assert.equal(used.sources.rooms.length, 2);
 
-    // 用真实统计喂 check：PLUS 只含 1 个云房间，这台机器已经用了 2 个 → 该拦
+    // 用真实统计喂 check：这台机器已经建了 2 个房间，免费档 3 个还剩 1 个位，
+    // 再建第 3 个（下标 3，即第 4 个）就该提示升级。
     const q = createQuota();
-    assert.equal(q.check('plus', 'rooms', used.counts.rooms).ok, false);
-    assert.equal(q.check('plus', 'rooms', 0).ok, true);
+    assert.equal(q.check('free', 'rooms', used.counts.rooms).ok, true);
+    assert.equal(q.check('free', 'rooms', used.counts.rooms).remaining, 1);
+    assert.equal(q.check('free', 'rooms', 3).ok, false);
 
     // string 形式也支持
     const single = countUsed({ roots: rootA });

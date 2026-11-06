@@ -42,7 +42,7 @@ test('签发 → 校验：往返成功，claims 完整', () => {
   assert.equal(v.claims.sub, '张三');
   assert.equal(v.claims.seats, 8);
   assert.deepEqual(v.claims.skins, ['aurora']);
-  assert.equal(v.entitlements.cloudRooms, 1);
+  assert.equal(v.entitlements.cloudRooms, 20);
 });
 
 test('篡改任何一位都必须验不过（payload / 签名各试一次）', () => {

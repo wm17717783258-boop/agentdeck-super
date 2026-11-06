@@ -266,7 +266,7 @@ test('工具名字进了系统提示词以外的所有地方都一致：register
 
 /* ── 3. 路由注册 ───────────────────────────────────────────────────────── */
 
-test('默认挂五个路由：/adbp 前缀 + /deck 精确 + /deck/console 测试台 + /deck/act 主页动作 + /visit 串门落地页', async () => {
+test('默认挂九个路由：五个产品路由 + 四个协议网关路由（OpenAPI 3.1 / A2A）', async () => {
   const b = await boot();
   try {
     assert.ok(routeFor(b.state, 'prefix', '/adbp'), '缺 ADBP 前缀路由');
@@ -276,7 +276,56 @@ test('默认挂五个路由：/adbp 前缀 + /deck 精确 + /deck/console 测试
     // 主页上的按钮也是 POST 到独立路径，同样到不了 /deck 的 handler
     assert.ok(routeFor(b.state, 'exact', '/deck/act'), '缺 /deck/act 主页动作路由');
     assert.ok(routeFor(b.state, 'prefix', '/visit'), '缺 /visit 串门落地页路由');
-    assert.equal(b.state.routes.length, 5, `路由多了：${b.state.routes.map((r) => `${r.kind}:${r.path}`).join(',')}`);
+    // 1.10.0：对外协议网关挂在根 /v1 下（不能挂 /adbp 下，那边是 prefix 路由会先吞掉）
+    assert.ok(routeFor(b.state, 'exact', '/v1/openapi.json'), '缺 OpenAPI 3.1 文档路由');
+    assert.ok(routeFor(b.state, 'prefix', '/v1/tools'), '缺 OpenAPI 单工具调用路由');
+    assert.ok(routeFor(b.state, 'exact', '/v1/a2a/agent-card.json'), '缺 A2A agent card 路由');
+    assert.ok(routeFor(b.state, 'exact', '/v1/a2a/message'), '缺 A2A message 路由');
+    assert.equal(b.state.routes.length, 9, `路由数量不对：${b.state.routes.map((r) => `${r.kind}:${r.path}`).join(',')}`);
+  } finally {
+    b.cleanup();
+  }
+});
+
+test('协议网关走真宿主：/v1/openapi.json 的路径数 = 真工具数，A2A skills 同理', async () => {
+  const b = await boot();
+  try {
+    // 真机验收时抓到的 bug：网关问的是 hub.list()，而宿主给的 localHub 当时只有 names()，
+    // 于是 /v1/openapi.json 的 paths 是空的、A2A card 的 skills 也是空的——
+    // tests/gateway.test.mjs 用的是自己的假 hub（有 list），所以单测全绿、真宿主却是坏的。
+    //
+    // 这条就用真宿主挂上去的那个 handler 发真请求，堵死这个洞。
+    const route = routeFor(b.state, 'exact', '/v1/openapi.json');
+    assert.ok(route && typeof route.handler === 'function', '没挂上 OpenAPI 路由');
+
+    const res = await call(route.handler, { method: 'GET', url: '/v1/openapi.json' });
+    assert.equal(res.statusCode, 200, `OpenAPI 文档没返回 200：${res.statusCode}`);
+    const doc = JSON.parse(res.body);
+
+    const paths = Object.keys(doc.paths || {});
+    const toolCount = b.state.tools.length;
+    assert.ok(toolCount >= 21, `工具数太少：${toolCount}`);
+    assert.equal(paths.length, toolCount,
+      `OpenAPI 路径数应等于真工具数（网关没拿到真 hub 的话这里会是 0）：${paths.length} vs ${toolCount}`);
+    assert.ok(paths.includes('/v1/tools/twin_remember'), `缺 twin_remember 路径：${paths.slice(0, 5).join(',')}…`);
+
+    // 每个路径都必须对应一个真注册过的工具，不许凭空造
+    for (const p of paths) {
+      assert.ok(p.startsWith('/v1/tools/'), `路径形状不对：${p}`);
+      const name = p.slice('/v1/tools/'.length);
+      assert.ok(b.state.tools.some((t) => t.name === name), `文档里有没注册的工具：${name}`);
+    }
+    // x-agentdeck-tool-count 也要跟得上（它以前会写 0）
+    assert.equal(doc['x-agentdeck-tool-count'], toolCount, 'x-agentdeck-tool-count 与真工具数不一致');
+
+    // A2A card 的 skills 走的是同一份 hub，也该是满的
+    const cardRoute = routeFor(b.state, 'exact', '/v1/a2a/agent-card.json');
+    assert.ok(cardRoute && typeof cardRoute.handler === 'function', '没挂上 A2A 路由');
+    const cardRes = await call(cardRoute.handler, { method: 'GET', url: '/v1/a2a/agent-card.json' });
+    assert.equal(cardRes.statusCode, 200);
+    const card = JSON.parse(cardRes.body);
+    assert.ok(Array.isArray(card.skills) && card.skills.length === toolCount,
+      `A2A skills 数应等于真工具数：${(card.skills || []).length} vs ${toolCount}`);
   } finally {
     b.cleanup();
   }
@@ -284,8 +333,7 @@ test('默认挂五个路由：/adbp 前缀 + /deck 精确 + /deck/console 测试
 
 test('/visit 落地页：拿真邀请函渲染出主人名片；坏链接不 500', async () => {
   const b = await boot();
-  try {
-    const handler = routeFor(b.state, 'prefix', '/visit').handler;
+  try {    const handler = routeFor(b.state, 'prefix', '/visit').handler;
     // 1) 没带 token：给一句人话，不是 500
     const bare = await call(handler, { url: '/visit' });
     await settle();

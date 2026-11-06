@@ -1,0 +1,65 @@
+# 红队用例：注入与越权 · agentdeck-super 1.10.0
+
+· 时间：2026-11-06T11:23:48.855Z（本机时区 Asia/Shanghai）
+· 版本：agentdeck-super 1.10.0
+· Node：v24.15.0 / win32-x64
+· 命令：node --test --test-concurrency=1 "tests/security-redteam.test.mjs"（cwd=D:\agentdeck-super，DSH_HOME=C:\Users\王冕\AppData\Local\Temp\adsk-home-security）
+· 结果：tests 11 / pass 11 / fail 0 / skipped 0 / 退出码 0（0.5s）
+
+## 这轮红队覆盖什么
+
+① 恶意记忆条目诱导外部写入（记忆里的命令会不会被执行）
+② 房间/远程令牌越权读别的团队任务板（ADBP 令牌跨团队）
+③ 串门令牌越界（scope=visit 的邀请函去换 work 权限）
+④ 记忆可见性绕过（public / friend 视角能不能看到 private）
+⑤ 过期令牌 / 篡改令牌 / 冒名成员（签名与身份两条线）
+
+## 本轮真发现并修掉的两个洞（在 lib/engine/adbp.js）
+
+· 洞 1 跨团队越权读：`GET /adbp/v1/state?teamId=<别人的队>` 原本直接用 query 里的 teamId，
+  任何一张合法令牌都能读别的团队的任务板。修法：query.teamId 与令牌团队不一致 → 403 forbidden，
+  响应里不回显别人的 teamId 和任务内容。
+· 洞 2 冒名：`/tasks?memberId=`、`/result`、`/chat` 原本允许请求体里的 memberId 覆盖令牌身份，
+  可以替别人领活、交活、发言。修法：memberId 必须等于令牌里的成员 → 否则 403，不传则按令牌算。
+
+两处都留了"正常路仍然通"的正向断言，避免把功能一起堵死。
+
+──────────────── 断言明细 ────────────────
+✔ 越权 ①：没有令牌 / 令牌是编的 / 令牌过期，三种都进不来（401） (23.3659ms)
+✔ 越权 ②：A 队的令牌读不到 B 队的任务板（403，且响应里没有 B 的一字一句） (18.3682ms)
+✔ 越权 ③：不能冒用别人的名义发言 / 交活 / 领活（403），用自己的名义照常 200 (26.9124ms)
+✔ 串门越界 ①：scope=visit 的邀请函要不来 work 权限（scope_mismatch），正常 visit 收得下 (21.3722ms)
+✔ 串门越界 ②：改一个字的 scope / 有效期 → 签名对不上（bad_signature）；改版本号 → bad_version (12.3355ms)
+✔ 串门越界 ③：过期邀请函当场拒（expired），时过境迁不能补票 (8.1855ms)
+✔ 便签注入：标题里塞命令 / 路径，只会变成一条任务标题，不会执行任何东西 (15.3594ms)
+✔ 记忆投毒 ①：注入载荷原样存、原样召回，副作用为零（哨兵文件不存在） (26.6298ms)
+✔ 记忆投毒 ②：塞 10 万字符也撑不爆（截断到 MAX_TEXT），空文本/超限标签被规整 (3.4846ms)
+✔ 记忆越权 ①：public 视角召回不到 private 条目；friend 也拿不到 private (34.9623ms)
+✔ 记忆越权 ②：拿别人的 id / 带路径穿越的 id 删不掉东西 (46.5828ms)
+ℹ tests 11
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+
+──────────────── 原始输出尾部（末 40 行）────────────────
+✔ 越权 ①：没有令牌 / 令牌是编的 / 令牌过期，三种都进不来（401） (23.3659ms)
+✔ 越权 ②：A 队的令牌读不到 B 队的任务板（403，且响应里没有 B 的一字一句） (18.3682ms)
+✔ 越权 ③：不能冒用别人的名义发言 / 交活 / 领活（403），用自己的名义照常 200 (26.9124ms)
+✔ 串门越界 ①：scope=visit 的邀请函要不来 work 权限（scope_mismatch），正常 visit 收得下 (21.3722ms)
+✔ 串门越界 ②：改一个字的 scope / 有效期 → 签名对不上（bad_signature）；改版本号 → bad_version (12.3355ms)
+✔ 串门越界 ③：过期邀请函当场拒（expired），时过境迁不能补票 (8.1855ms)
+✔ 便签注入：标题里塞命令 / 路径，只会变成一条任务标题，不会执行任何东西 (15.3594ms)
+✔ 记忆投毒 ①：注入载荷原样存、原样召回，副作用为零（哨兵文件不存在） (26.6298ms)
+✔ 记忆投毒 ②：塞 10 万字符也撑不爆（截断到 MAX_TEXT），空文本/超限标签被规整 (3.4846ms)
+✔ 记忆越权 ①：public 视角召回不到 private 条目；friend 也拿不到 private (34.9623ms)
+✔ 记忆越权 ②：拿别人的 id / 带路径穿越的 id 删不掉东西 (46.5828ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 371.7371
+

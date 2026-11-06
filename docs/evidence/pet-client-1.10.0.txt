@@ -1,0 +1,43 @@
+悬浮桌宠客户端（1.10.0）真机取证
+====================================
+
+结论：桌宠真的以独立窗口浮在桌面上，不是浏览器标签页、不是预览图。
+
+一、怎么做的（不装 Electron / Tauri）
+  bin/nexi-pet.mjs 用本机自带的 Edge（Chromium）以 --app=<url> 拉起一个
+  无地址栏、无标签页的独立窗口，窗口尺寸/位置由命令行参数决定。
+  页面本身是自包含的（内联 SVG + 内联 CSS，零外链），由一个只回这一页的
+  本地小服务喂给窗口 —— 不读盘、不代理、不联网。
+
+二、本次实测（2026-11-06 18:27，Windows，会话 1，有桌面合成 DWM）
+  启动命令：node bin/nexi-pet.mjs --size 260 --corner bottom-right --root D:\demo\live\work
+  浏览器：C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+  皮肤：basic｜状态：idle｜尺寸：260px
+  窗口位置：bottom-right（1636, 748）
+  本地服务：http://127.0.0.1:49281/  →  HTTP 200，页面 7240 字符，含内联 <svg>
+  Edge 进程：本次新起 9 个（其中 1 个是窗口进程）
+  窗口进程：PID 22396，窗口标题「Nexi 桌宠」，主窗口句柄 1313766（非 0 = 真有窗口）
+  截屏：D:\demo\live\pet-window-live.png（屏幕右下角 340x340，肉眼可见窗口浮在任务栏之上）
+  静态渲染：D:\demo\live\pet-window.png（260x260，桌宠本体）
+  离线页面：D:\demo\live\pet.html（7485 B，双击就能开，不依赖任何服务）
+
+三、诚实边界（这部分照写，不美化）
+  ❌ 不做逐像素透明：浏览器窗口的背景由 OS 合成器决定，网页改不了。
+     这里用「无边框 + 圆角卡片」代替真透明，视觉上是浮在桌面的小宠物，
+     不是"把背景抠掉"。
+  ❌ 不做鼠标穿透：点一下会激活窗口。要真透明/穿透只能上 Electron/Tauri
+     或 Win32 原生分层窗口，那与本插件"轻量、可装进任意宿主"的定位冲突。
+  ✅ 不联网：页面内零 http(s) 外链（SVG 的 xmlns 命名空间不算，它不联网），
+     有测试 externalRefs() 守着，出现真外链就红。
+  ✅ 不写盘：页面里那点 JS 只做"双击换状态标题"和"右键关窗"。
+  ✅ 关掉就干净：窗口一关，本地服务进程随之结束，端口释放。
+
+四、自检覆盖（tests/pet-client.test.mjs，9 条）
+  - 页面自包含：内联 SVG、零真外链、无外部 script/link/@import
+  - 尺寸夹取：5px → 120px，99999px → 560px，乱写 → 240px
+  - 五种状态都能出图，未知状态回落 idle（不空白、不崩）
+  - 页面内 JS 不 fetch、不 localStorage、不发 XHR
+  - 四角坐标算得对，小屏上不产出负坐标（这条修掉了一个真 bug）
+  - 找不到浏览器时返回 null 而不是抛异常
+  - 本地服务 GET / 回页面、别的路径 404（顺带证明不往外代理）
+  - package.json 的 bin 表里有 nexi-pet

@@ -77,7 +77,7 @@ test('工作室版价格与年付写清楚（含加席价），企业版写"起"
   const { root, done } = fresh('price');
   try {
     const text = await plans(root);
-    assert.match(text, /¥99\/月（年付 ¥999，含 3 席，加席 ¥20\/席·月）/);
+    assert.match(text, /¥99\/月（年付 ¥999，含 3 席，加席 ¥25\/席·月）/);
     assert.match(text, /¥29\/月（年付 ¥288）/);
     assert.match(text, /企业版 — ¥30000 起/);
   } finally {

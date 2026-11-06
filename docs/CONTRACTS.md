@@ -145,7 +145,7 @@ export function createBoardTool(deps) => Tool    // 名字：team_board
 export function createPassportTool(deps) => Tool // 名字：agent_passport（1.8.0；deps 用 licenseRoot()/root()/workspace 兜底定位身份目录）
 Tool = { name, description, parameters /* JSON Schema */, output, execute(args, exec) }
 ```
-**工具清单唯一事实来源是 `lib/hub.js` 的 `HUB_TOOL_ORDER`**（1.8.0 为 17 个）；`lib/tools/*.js` 里写死的名单会漂。新增工具时同步改四处：`lib/hub.js`、`lib/index.js` 加载表、`lib/mcp/readonly.js`（`READONLY_ALLOWED` + `DEFAULT_ACTION`）、`tests/mcp-http.test.mjs` 的计数断言。
+**工具清单唯一事实来源是 `lib/hub.js` 的 `HUB_TOOL_ORDER`**（1.10.0 为 21 个）；`lib/tools/*.js` 里写死的名单会漂。新增工具时同步改四处：`lib/hub.js`、`lib/index.js` 加载表、`lib/mcp/readonly.js`（`READONLY_ALLOWED` + `DEFAULT_ACTION`）、`tests/mcp-http.test.mjs` 的计数断言。
 `deps = { brain, registry, board, workspace, emit, runAgent, callRemote, ingress, cfg }`
 
 **修订（已查实宿主 API，2026-11-05）**：宿主用 `ctx.tools.register(def)`，def 的形状是

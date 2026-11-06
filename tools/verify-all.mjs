@@ -30,14 +30,14 @@ const NO_RECORD = argv.includes('--no-record');
 const SUITES = [
   {
     id: 'gate',
-    what: '全量回归（520 条单测）+ 红队 11 条',
+    what: '全量回归（663 条单测）+ 红队 11 条',
     cmd: ['tools/verify-security.mjs'],
     evidence: [`gate-${ver}.txt`, `security-redteam-${ver}.txt`],
     slow: true,
   },
   {
     id: 'readonly',
-    what: 'MCP 只读模式（18→14 工具、五类写动作全拒）',
+    what: 'MCP 只读模式（21→17 工具、五类写动作全拒）',
     cmd: ['tools/verify-readonly.mjs'],
     evidence: [`readonly-${ver}.txt`],
   },
@@ -70,6 +70,18 @@ const SUITES = [
     what: '支付链路端到端：真 HTTP 网关 → 到账 → 解锁 → 幂等 → 退款收回（含「环境未配」诚实失败）',
     cmd: ['tools/verify-pay.mjs'],
     evidence: [`pay-${ver}.txt`],
+  },
+  {
+    id: 'visit',
+    what: '两个真人 / 两台机器 / 两个 Agent 跨进程真串一次门（邀请→验签→回卡→求助便签→落任务）',
+    cmd: ['tools/verify-visit.mjs'],
+    evidence: [`visit-2user-${ver}.txt`],
+  },
+  {
+    id: 'meeting',
+    what: '三个 Agent 真开一场会：意见→分歧→投票→决议→落任务（含治理闸门反例）',
+    cmd: ['tools/verify-meeting.mjs'],
+    evidence: [`meeting-3agent-${ver}.txt`],
   },
   {
     id: 'installed',

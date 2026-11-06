@@ -14,6 +14,10 @@
  * 约定：诊断信息一律 stderr，stdout 只给结构化结果。
  */
 
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { createHub } from '../lib/hub.js';
 import { serveStdio } from '../lib/mcp/server.js';
 import { HOSTS, detectHosts, installHost, uninstallHost, installAll, launchCommand } from '../lib/connect/hosts.js';
@@ -224,6 +228,24 @@ async function cmdDeny() {
   return automationCall({ action: 'deny', approvalId, reason: rest.slice(1).join(' ') });
 }
 
+/**
+ * nexi pet —— 把 2D 悬浮桌宠拉起来（1.10.0）。
+ * 不装 Electron：用本机自带 Edge/Chrome 的 --app 窗口，无地址栏、无标签页。
+ * 转调 bin/nexi-pet.mjs，参数原样透传（--size/--corner/--state/--port/--out/--print）。
+ */
+async function cmdPet() {
+  const cli = join(dirname(fileURLToPath(import.meta.url)), 'nexi-pet.mjs');
+  const passthrough = rest.filter((a) => typeof a === 'string');
+  return await new Promise((done) => {
+    const child = spawn(process.execPath, [cli, ...passthrough], { stdio: 'inherit' });
+    child.on('close', (code) => done(typeof code === 'number' ? code : 0));
+    child.on('error', (err) => {
+      log(`桌宠起不来：${err?.message || err}`);
+      done(1);
+    });
+  });
+}
+
 async function cmdVerifyHost() {
   const flags = parseFlags(rest);
   const ids = flags.all ? null : [flags._[0]].filter(Boolean);
@@ -290,6 +312,7 @@ const table = {
   resume: cmdResume,
   approve: cmdApprove,
   deny: cmdDeny,
+  pet: cmdPet,
   help,
   '--help': help,
   '-h': help,

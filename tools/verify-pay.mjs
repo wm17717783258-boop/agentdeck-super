@@ -22,6 +22,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const HERE = new URL('../', import.meta.url);
+// 版本从 package.json 读，别把版本号写死在证据文件名里（写死就等着下次漂）。
+const ver = JSON.parse(readFileSync(new URL('package.json', HERE), 'utf8')).version;
 const LIB = new URL('lib/', HERE).href;
 
 const { buyNow, confirmPayment, refundOrder, placeOrder, marketLicense, purchasedSkins, listOrders } = await import(
@@ -242,7 +244,7 @@ lines.push('');
 lines.push(summary);
 
 const text = [
-  '支付链路端到端验证（1.9.0）',
+  '支付链路端到端验证（' + ver + '）',
   `时间：${new Date().toISOString()}`,
   `本地网关：127.0.0.1:${port}（真 HTTP，脚本内起停）`,
   `测试根目录：临时目录（跑完已删）`,
@@ -251,7 +253,7 @@ const text = [
 
 console.log(text);
 
-const outFile = new URL('docs/evidence/pay-1.9.0.txt', HERE);
+const outFile = new URL(`docs/evidence/pay-${ver}.txt`, HERE);
 try {
   const { writeFileSync, mkdirSync } = await import('node:fs');
   mkdirSync(new URL('docs/evidence/', HERE), { recursive: true });

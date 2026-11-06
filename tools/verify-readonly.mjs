@@ -204,7 +204,7 @@ try {
     toolsB.length - toolsA.length === 4,
     `只读 ${toolsA.length} / 完整 ${toolsB.length}`,
   );
-  check('对照组工具数 >= 18（少了说明有工具没挂上）', toolsB.length >= 18, String(toolsB.length));
+  check('对照组工具数 >= 21（少了说明有工具没挂上）', toolsB.length >= 21, String(toolsB.length));
   check('对照组 readOnly=false', summaryB.readOnly === false, String(summaryB.readOnly));
   check('对照组 create 成功（不是工具坏了）', createB.isError === false, clip(createB.text, 80));
   check('对照组 add 成功且任务板上能看到', addB.isError === false && /普通模式能加的任务/.test(listB2.text), clip(listB2.text, 100));
