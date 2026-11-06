@@ -2,7 +2,7 @@
 
 > 一句话：**给每个 Agent（或每个人）发一张离线能力卡，对面机器不联网、不共享密钥目录也能验出「卡没被改过、签发方还是同一把密钥」。**
 >
-> 工具名：`agent_passport`（第 17 个工具，1.8.0 加入）。实现：`lib/identity.js` + `lib/tools/identity.js`。
+> 工具名：`agent_passport`（1.8.0 加入；1.10.0 起共 21 个工具，编号不再写死，免得每次加工具都要回来改）。实现：`lib/identity.js` + `lib/tools/identity.js`。
 > 真机证据：`docs/evidence/passport-1.8.0.txt`（10 项，跨两个独立 `DSH_HOME`）；单测：`tests/identity.test.mjs`（11 例）。
 
 ---
@@ -96,7 +96,7 @@ NEXP1.<base64url(payload)>.<base64url(signature)>
 
 `mcp.readOnly = true`（或 `nexi mcp --read-only`、`NEXI_MCP_READONLY=1`）时：
 
-- `agent_passport` **仍在工具清单里**（1.9.0 起共 18 个工具，只读模式广告 14 个），但只允许 `show` / `verify` / `list`；
+- `agent_passport` **仍在工具清单里**（1.10.0 起共 21 个工具，只读模式广告 17 个），但只允许 `show` / `verify` / `list`；
 - `issue` / `revoke` 直接 `isError`，文案点名开关：`错误：只读模式（mcp.readOnly=true）：agent_passport action=issue 会改状态，…`；
 - 也就是说：**借出去的 Hub 能验卡，但造不出卡，也删不掉卡。**
 

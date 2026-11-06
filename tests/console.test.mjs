@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CONSOLE_ACTIONS, consolePageHtml, parseConsoleSubmit } from '../lib/console.js';
+import { HUB_TOOL_ORDER } from '../lib/hub.js';
 
 const form = (obj) => {
   const f = new URLSearchParams();
@@ -18,14 +19,22 @@ const form = (obj) => {
   return f;
 };
 
-test('测试台：19 个动作覆盖 18 个工具里的主要能力，且每个都指向真工具名', () => {
+test('测试台：19 个动作都指向真工具名，id 不重复', () => {
   const items = CONSOLE_ACTIONS.flatMap((g) => g.items);
   assert.equal(items.length, 19);
-  // 工具名必须是 Hub 真有的（这里挑出测试台用到的集合做白名单校验）
+  // 工具名必须是 Hub 真有的（这里挑出测试台用到的集合做白名单校验）。
+  // 注意：不写「覆盖 N 个工具」这种话——工具数一直在变，写死了迟早漂；
+  // 真正要钉住的是"每个动作都指向一个存在的工具"。
+  // 工具名必须是 Hub 真有的 —— 白名单也跟真 hub 对一次，防止"测试台引用了一个已删的工具"
+  // 而白名单里还留着它，两边一起骗人。
+  const hubNames = new Set(HUB_TOOL_ORDER);
   const known = new Set([
     'team_board', 'agent_passport', 'twin_remember', 'twin_recall', 'twin_brief',
     'pet_skin', 'pet_visit', 'deck_meeting', 'deck_automation', 'deck_license', 'deck_room',
   ]);
+  for (const name of known) {
+    assert.ok(hubNames.has(name), `测试台白名单里的 \ 在真 hub 里不存在了`);
+  }
   for (const it of items) {
     assert.ok(known.has(it.tool), `测试台引用了不存在的工具：${it.tool}`);
     assert.ok(it.id && it.label, '每个动作要有 id 和 label');
