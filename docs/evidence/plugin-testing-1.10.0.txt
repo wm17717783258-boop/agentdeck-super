@@ -1,0 +1,95 @@
+插件怎么测 —— 三种方式，由浅到深（1.10.0）
+============================================
+
+产品有两个身份，测试方式不同：
+  · 身份一：**DSH 插件**（装进 DSH 自己的 profile，走 cordis 插件协议）
+  · 身份二：**MCP server**（装进别的 Agent，走 MCP 协议）
+
+三种测法，各自的证据如下。
+
+────────────────────────────────────────────────────────────
+方式 1：真 MCP 协议对话（**不需要装任何宿主**）
+────────────────────────────────────────────────────────────
+命令：node tools/verify-mcp-plugin.mjs
+证据：docs/evidence/mcp-plugin-1.10.0.txt（26 项，全过）
+
+它做的事：起真子进程 `node bin/nexi.mjs mcp`，走 stdio 的 JSON-RPC 2.0，
+完整走一遍宿主会走的流程：
+  initialize → tools/list → tools/call → 错误路径 → 只读模式
+
+实测结果：
+  ✅ 协议版本协商 2025-06-18
+  ✅ serverInfo：{name:"nexi", title:"Nexi 灵犀", version:"1.10.0"}
+  ✅ tools/list 拿到 21 个工具；每个都有 name/description/inputSchema
+  ✅ 带 action 的工具都把枚举广告出来（模型看得到能干啥）
+  ✅ 真调用通过：catalog / create / twin_remember / twin_recall / invite / brief
+  ✅ 写→读闭环：记住的能召回来
+  ✅ 调不存在的工具 → JSON-RPC error -32602（不是静默）
+  ✅ 不认识的方法 → -32601
+  ✅ 只读模式（NEXI_MCP_READONLY=1）：工具 21→17，写动作 isError，读动作照常
+  ✅ stdout 全是 JSON-RPC 帧，没有日志杂质混进去
+
+**为什么不需要装宿主**：Claude Code / Cursor 这些在底下做的就是这段 JSON-RPC。
+协议对了，它们就一定能用。
+
+────────────────────────────────────────────────────────────
+方式 2：真宿主自己认不认（装了才有意义）
+────────────────────────────────────────────────────────────
+命令：nexi verify-host --all --record
+证据：docs/evidence/hosts-1.10.0.txt
+
+四步全验：装 → **让宿主自己报** → 卸 → 配置逐字节还原。
+
+本机实测：
+  ✅ Claude Code   `claude mcp list` → nexi: √ Connected
+  ✅ Codex         `codex mcp list`  → 列在 MCP 表里
+  ✅ Gemini CLI    `gemini mcp list` → Configured MCP servers: ○ nexi
+  🟡 Claude Desktop  GUI 程序，没有可非交互调用的 mcp 子命令（平台限制，不是没试）
+  ⚪ Cursor / Windsurf / Cline / Continue  本机未装 —— 拒绝伪造配置
+
+────────────────────────────────────────────────────────────
+方式 3：让真宿主**真的用插件做一件事**（最强证据）
+────────────────────────────────────────────────────────────
+命令：claude -p "<让它用插件的工具>" --allowedTools "mcp__nexi__deck_market"
+
+实测（2026-11-06）：
+  $ claude -p "Use the nexi MCP server's deck_market tool with action=catalog..." \
+      --allowedTools "mcp__nexi__deck_market"
+  退出码 0，Claude Code 回：
+    【deck_market】货架 4 套（已拥有 3 · 在售 1）· 当前档位 free
+
+这一条证明的是：**宿主不只是"连上了"，而是真的能把我们的工具调出结果来**。
+（注意：这一条在别的机器上取决于对方有没有配模型/密钥；协议层不受影响。）
+
+────────────────────────────────────────────────────────────
+方式 4：不装宿主也能拿配置（适配能力的证明）
+────────────────────────────────────────────────────────────
+命令：nexi config <host-id>            # 单个
+      nexi config --all                # 8 个全给
+      nexi config cursor --out c.json  # 写到文件
+
+为什么重要：**适配靠的是知道宿主的配置格式，不是把宿主装到本机**。
+8 个宿主的配置形状我们自己维护、有测试钉着，所以任何机器上都能生成。
+
+本机实测：8/8 全部生成正确配置（本机装没装都不影响）
+  json 类：mcpServers.nexi {command, args, env}
+  toml 类：codex → [mcp_servers.nexi]
+
+────────────────────────────────────────────────────────────
+其它层次（回归 / 全功能 / 按钮）
+────────────────────────────────────────────────────────────
+  node --test --test-concurrency=1 "tests/*.test.mjs"    全量回归（758 条）
+  node tools/verify-all.mjs                              9 组验收（gate/readonly/passport/mcp-http/recovery/console/pay/visit/meeting）
+  tests/e2e-all-actions.test.mjs                         21 工具 / 105 动作逐个真调
+  tests/e2e-side-effects.test.mjs                        写动作之后独立读回来核对
+  tests/e2e-deck-buttons.test.mjs                        /deck 上 9 个按钮逐个真点
+  tests/plugin-install.test.mjs                          8 宿主装→卸→还原
+
+────────────────────────────────────────────────────────────
+一句话总结
+────────────────────────────────────────────────────────────
+测一个插件，核心不是"把它装进 8 个软件里"，而是：
+  ① 协议层对不对（方式 1，不需要装宿主）
+  ② 宿主认不认（方式 2，装了才验得了）
+  ③ 能不能真调出结果（方式 3，最强）
+  ④ 配置能不能正确生成（方式 4，不需要装宿主）

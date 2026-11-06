@@ -1,14 +1,14 @@
 Nexi 灵犀 —— Agent 通行证 v1 真机验证
 版本：1.10.0
 被测包：D:\agentdeck-super
-时间：2026-11-06T15:06:11.177Z
+时间：2026-11-06T15:42:44.217Z
 
 ✔ ① A 机器签发通行证（进程 1，nexi call） —— NEXP1.eyJ2IjoxLCJr…（491 字符）
-✔    kid 由公钥指纹算出（kid_ + 16 位） —— kid_Tk6gTzYinEMs2599
-✔    私钥只落在 A 机器（身份跟着"人"走，落在机级目录；B 机器上没有） —— C:\Users\王冕\AppData\Local\Temp\nexi-pp-a-S6ZNzD\lic\.agentdeck\identity\key.pem
-✔ ② B 机器验卡通过（进程 2，不共享密钥目录） —— kid：kid_Tk6gTzYinEMs2599
+✔    kid 由公钥指纹算出（kid_ + 16 位） —— kid_5zq3PK5t8aU2FdFP
+✔    私钥只落在 A 机器（身份跟着"人"走，落在机级目录；B 机器上没有） —— C:\Users\王冕\AppData\Local\Temp\nexi-pp-a-dIxu37\lic\.agentdeck\identity\key.pem
+✔ ② B 机器验卡通过（进程 2，不共享密钥目录） —— kid：kid_5zq3PK5t8aU2FdFP
 ✔ ③ 改过的卡验不过（签名对不上） —— 【agent_passport】没通过：签名对不上：卡被改过，或者不是这台机器签的（code=bad_signature）
-✔ ④ 指定 kid=别人 时拒绝（kid 是签发者指纹） —— 【agent_passport】没通过：这张卡不是 kid_0000000000000000 签发的（实际 kid_Tk6gTzYinEMs2599）（code=kid_mismatch）
+✔ ④ 指定 kid=别人 时拒绝（kid 是签发者指纹） —— 【agent_passport】没通过：这张卡不是 kid_0000000000000000 签发的（实际 kid_5zq3PK5t8aU2FdFP）（code=kid_mismatch）
 ✔    指定 kid=正确 时通过（记住 kid 就能确认"还是那台机器"）
 ✔ ⑤ 要求未声明的能力时拒绝（deck_meeting） —— 【agent_passport】没通过：这张卡没有声明的能力：deck_meeting（code=missing_capability）
 ⑥ 过期/时钟偏移：由 tests/identity.test.mjs 覆盖（CLI 只暴露 ttlDays≥1，造不出过期卡）
@@ -23,4 +23,4 @@ Nexi 灵犀 —— Agent 通行证 v1 真机验证
 ✔ ⑩ 吊销只标本地账本：卡在 B 机器仍验得过（离线凭证没有吊销中心，已在文案里写明）
 
 结论：全部通过
-耗时：3.5s
+耗时：3.4s

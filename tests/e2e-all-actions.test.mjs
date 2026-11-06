@@ -80,11 +80,16 @@ async function callTool(name, args) {
 }
 
 test('真宿主可达（不可达则整套跳过）', async () => {
-  try {
-    const res = await fetch(`${BASE}/v1/openapi.json`, { signal: AbortSignal.timeout(8000) });
-    reachable = res.ok;
-  } catch {
-    reachable = false;
+  // 宿主可能正在重启（真机跑验收时会撞上）：重试几次，别把"正在重启"当成"坏了"。
+  // 实在连不上就整套 skip —— 外部依赖不该让回归变红。
+  for (let i = 0; i < 3 && !reachable; i += 1) {
+    try {
+      const res = await fetch(`${BASE}/v1/openapi.json`, { signal: AbortSignal.timeout(8000) });
+      reachable = res.ok;
+    } catch {
+      reachable = false;
+      if (i < 2) await new Promise((r) => setTimeout(r, 2000));
+    }
   }
   if (!reachable) {
     console.log(`  [skip] ${BASE} 不可达 —— 想跑这套先起宿主`);

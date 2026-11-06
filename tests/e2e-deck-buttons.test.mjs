@@ -11,6 +11,18 @@ import assert from 'node:assert/strict';
 
 const BASE = process.env.NEXI_E2E_BASE || 'http://127.0.0.1:58399';
 
+/** 宿主可能正在重启：给几次重试，别把"正在重启"当成"坏了"。 */
+async function hostUp(attempts = 3) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const r = await fetch(`${BASE}/deck`, { signal: AbortSignal.timeout(8000) });
+      if (r.ok) return true;
+    } catch { /* 再试 */ }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
 /** 按一个按钮：POST 表单 → 拿 303 的 Location → 解析出 done/failed 那句话。 */
 async function press(path, body) {
   const res = await fetch(`${BASE}${path}`, {
@@ -52,11 +64,7 @@ test('真宿主可达（不可达则整套跳过）', async (t) => {
 
 for (const btn of BUTTONS) {
   test(`按钮「${btn.name}」真按一次：303 回来，且带回的话是对的`, async (t) => {
-    let reachable = true;
-    try {
-      await fetch(`${BASE}/deck`, { signal: AbortSignal.timeout(5000) });
-    } catch { reachable = false; }
-    if (!reachable) { t.skip(`${BASE} 不可达`); return; }
+    if (!(await hostUp())) { t.skip(`${BASE} 不可达`); return; }
 
     const r = await press(btn.path, btn.body);
     assert.equal(r.status, 303, `该 303 重定向，实际 ${r.status}（location=${r.location}）`);
@@ -77,9 +85,7 @@ for (const btn of BUTTONS) {
 }
 
 test('不认识的按钮 id：如实报错，不静默当成功', async (t) => {
-  let reachable = true;
-  try { await fetch(`${BASE}/deck`, { signal: AbortSignal.timeout(5000) }); } catch { reachable = false; }
-  if (!reachable) { t.skip(`${BASE} 不可达`); return; }
+  if (!(await hostUp())) { t.skip(`${BASE} 不可达`); return; }
 
   const r = await press('/deck/act', '__id=no-such-action-xyz');
   assert.equal(r.status, 303);
@@ -88,9 +94,7 @@ test('不认识的按钮 id：如实报错，不静默当成功', async (t) => {
 });
 
 test('按钮失败文案有长度上限（不许把整个内脏塞进 URL）', async (t) => {
-  let reachable = true;
-  try { await fetch(`${BASE}/deck`, { signal: AbortSignal.timeout(5000) }); } catch { reachable = false; }
-  if (!reachable) { t.skip(`${BASE} 不可达`); return; }
+  if (!(await hostUp())) { t.skip(`${BASE} 不可达`); return; }
 
   const r = await press('/deck/act', '__id=no-such-action-xyz');
   if (r.failed) assert.ok(r.failed.length <= 240, `失败文案太长（${r.failed.length}）：会被 URL 截断`);
@@ -100,9 +104,7 @@ test('「加任务」按钮在有多个小组时也要能加上（真机 bug：�
   // 真机踩到的：页面上没有"选组"这一步，而机器上会越攒越多组。
   // 之前的实现只在"恰好 1 个组"时才自动补 teamId，多于 1 个就留空 →
   // 按钮回一句"当前没有绑定小组"，点了等于没点。真实用户一定会遇到。
-  let reachable = true;
-  try { await fetch(`${BASE}/deck`, { signal: AbortSignal.timeout(5000) }); } catch { reachable = false; }
-  if (!reachable) { t.skip(`${BASE} 不可达`); return; }
+  if (!(await hostUp())) { t.skip(`${BASE} 不可达`); return; }
 
   const marker = `按钮加的任务${Math.random().toString(36).slice(2, 6)}`;
   const r = await press('/deck/act', `__id=task-add&task-add__title=${encodeURIComponent(marker)}`);

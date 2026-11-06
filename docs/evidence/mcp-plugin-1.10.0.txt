@@ -1,0 +1,48 @@
+插件测试方式 1：真 MCP 协议对话（别的 Agent 拿到插件后就是这么用的）
+====================================================================
+时间：2026-11-06T15:43:31.539Z
+做法：起真子进程 `node bin/nexi.mjs mcp`，走 stdio 的 JSON-RPC 2.0：
+      initialize → tools/list → tools/call；协议版本、工具数、真调用都验。
+
+【第 1 步】握手（initialize）
+  ✅ 协议版本协商成功 —— 2025-06-18
+  ✅ 服务端自报名字 —— nexi
+     serverInfo：{"name":"nexi","title":"Nexi 灵犀","version":"1.10.0"}
+
+【第 2 步】工具清单（tools/list）
+  ✅ 工具清单拿得到 —— 21 个
+  ✅ 清单里有 team_board
+  ✅ 清单里有 super_agent
+  ✅ 清单里有 deck_team
+  ✅ 清单里有 deck_policy
+  ✅ 清单里有 deck_audit
+  ✅ 清单里有 pet_skin
+  ✅ 清单里有 twin_remember
+  ✅ 每个工具都有 name/description/inputSchema
+  ✅ 带 action 的工具都把枚举广告出来了
+
+【第 3 步】真调用（tools/call）—— 挑典型的几个动作
+  ✅ 读动作：deck_market catalog —— 【deck_market】货架 4 套（已拥有 3 · 在售 1）· 当前档位 free
+  ✅ 写动作：team_board create —— 【team_board】已创建小组 team_465f96fa3e（MCP 测试组）
+  ✅ 分身记忆：twin_remember —— 【twin_remember】已记住：mem_mw559dwpuftj
+  ✅ 召回读得回来（写→读闭环）
+  ✅ 串门邀请函生成 —— 【pet_visit】邀请函好了（只串门，2026-11-07 00:43 前有效） dsh://agentdeck/visit?t=eyJ2IjoyLCJra
+  ✅ 今日简报有内容
+  ✅ 调不存在的工具 → 返回 JSON-RPC error（不是静默） —— -32602
+  ✅ 不认识的方法 → -32601 —— -32601
+
+【第 4 步】只读模式（NEXI_MCP_READONLY=1）——同一个插件、同一个命令
+  ✅ 只读模式工具更少 —— 只读 17 / 完整 21
+  ✅ super_agent 在只读模式下消失
+  ✅ 只读模式下写动作返回 isError
+  ✅ 只读模式下读动作照常可用
+
+【第 5 步】进程行为
+  ✅ stdout 里全都是 JSON-RPC 帧（不会混进日志）
+  ✅ stdout 没有非 JSON 杂质
+
+====================================================================
+结论：26 项通过，0 项失败
+
+这就是"插件怎么测"的第一层：**跟别的 Agent 走完全同一条协议**。
+不需要装 Claude Code / Cursor 也能测——它们在底下做的就是把这段 JSON-RPC 走一遍。

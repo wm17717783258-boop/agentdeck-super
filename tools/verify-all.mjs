@@ -91,6 +91,12 @@ const SUITES = [
     optional: true,   // profile 里没装就能跳过，不算失败
   },
   {
+    id: 'mcp-plugin',
+    what: '插件核心验收：真 MCP 协议对话（initialize → tools/list → tools/call → 只读模式），不需要装宿主',
+    cmd: ['tools/verify-mcp-plugin.mjs'],
+    evidence: [`mcp-plugin-${ver}.txt`],
+  },
+  {
     id: 'all-actions',
     what: '全功能遍历：21 工具 / 105 个动作逐个真调（不崩、不空、不是"不认识的动作"）',
     cmd: ['--test', '--test-concurrency=1', 'tests/e2e-all-actions.test.mjs'],
