@@ -483,3 +483,28 @@ test('deck_policy reset：规则与计数一起清空', async () => {
     done();
   }
 });
+
+test('deck_policy set 的输出不许再写"未接线/只是存着"——那是接线之前的实话，现在是误导', async () => {
+  const { root, done } = freshRoot('wired-msg');
+  try {
+    const tool = plain(createPolicyTool({ root: () => root }));
+    const text = await tool.execute({ action: 'set', rule: { id: 'r1', match: { tool: 'pet_skin' }, effect: 'deny' } });
+    // 必须说清"已生效"
+    assert.match(text, /已生效/);
+    assert.match(text, /真的拦住执行/);
+    // 不许再出现接线之前的说法
+    assert.doesNotMatch(text, /未接线/);
+    assert.doesNotMatch(text, /只是存着/);
+    assert.doesNotMatch(text, /不会真的拦/);
+  } finally {
+    done();
+  }
+});
+
+test('deck_policy 文件头自述不许再说"本工具只做判定、不会拦截"', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../lib/tools/policy.js', import.meta.url), 'utf8');
+  assert.match(src, /已经接线/, '文件头该写清 1.10.0 起已接线');
+  assert.doesNotMatch(src, /本工具只做"判定"，它不会拦截任何工具调用/,
+    '那句是接线之前的说明，留着会让人以为写了规则也不生效');
+});
