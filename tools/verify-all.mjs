@@ -91,6 +91,12 @@ const SUITES = [
     optional: true,   // profile 里没装就能跳过，不算失败
   },
   {
+    id: 'everything',
+    what: '全功能端到端：21 工具 / 94 动作 + 4 无动作工具，每个都走真实业务流并核对副作用',
+    cmd: ['tools/verify-everything.mjs'],
+    evidence: [`everything-${ver}.txt`],
+  },
+  {
     id: 'crosshost',
     what: '跨机协作：两台机器 / 两个用户 / 走真实网络（relay → 建房间 → 进房 → 双向消息 → 重启后还在）',
     cmd: ['tools/verify-crosshost.mjs'],
