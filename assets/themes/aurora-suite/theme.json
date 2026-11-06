@@ -1,0 +1,14 @@
+{
+  "id": "aurora-suite",
+  "name": "极光套装",
+  "priceCents": 2500,
+  "license": "premium",
+  "author": "AgentDeck 官方",
+  "version": "1.0.0",
+  "description": "极光皮肤 + 霓虹，配一套渐变配色。单买要 18 元，打包 25 元（含两套）。",
+  "skins": ["premium-aurora", "nio"],
+  "sounds": [],
+  "actions": ["idle", "working", "sleeping"],
+  "separateCents": 1800,
+  "accent": "#7ef3ff"
+}

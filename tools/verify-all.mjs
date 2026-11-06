@@ -30,14 +30,14 @@ const NO_RECORD = argv.includes('--no-record');
 const SUITES = [
   {
     id: 'gate',
-    what: '全量回归（758 条单测）+ 红队 11 条',
+    what: '全量回归（784 条单测）+ 红队 11 条',
     cmd: ['tools/verify-security.mjs'],
     evidence: [`gate-${ver}.txt`, `security-redteam-${ver}.txt`],
     slow: true,
   },
   {
     id: 'readonly',
-    what: 'MCP 只读模式（21→17 工具、五类写动作全拒）',
+    what: 'MCP 只读模式（22→18 工具、五类写动作全拒）',
     cmd: ['tools/verify-readonly.mjs'],
     evidence: [`readonly-${ver}.txt`],
   },

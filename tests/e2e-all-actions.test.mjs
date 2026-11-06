@@ -1,5 +1,5 @@
 /**
- * 全功能真机遍历：21 个工具 / 94 个动作，逐个真调一次。
+ * 全功能真机遍历：22 个工具 / 97 个动作，逐个真调一次。
  *
  * 为什么要有这一层：其它套件是"挑重点测"，这一层是"一个都不漏"。
  * 产品的验收标准是"每个功能都能真用"，那就得每个动作都真跑一遍，
@@ -61,6 +61,7 @@ const CASES = {
   },
   deck_policy: { show: {}, set: { rule: { id: 'probe', match: { tool: 'pet_skin' }, effect: 'allow' } }, check: { tool: 'pet_skin', toolAction: 'list' }, reset: {} },
   deck_audit: { tail: { limit: 3 }, query: { tool: 'pet_skin', limit: 3 }, export: { format: 'json' } },
+  deck_sync: { info: {}, pack: { passphrase: '口令密码123' }, apply: { blob: 'NEXISYNC1.x', passphrase: '口令密码123' } },
   super_agent: { goal: '遍历测试目标', maxSteps: 1 },
   team_orchestrate: { goal: '遍历测试编排', plan: [{ id: 't1', title: '遍历子任务', role: 'worker' }], dryRun: true },
   pet_meeting: { topic: '遍历测试桌宠会议', rounds: 1, maxTasks: 1 },
@@ -100,7 +101,7 @@ test('真宿主可达（不可达则整套跳过）', async () => {
   assert.ok(n >= 21, `工具数该 >= 21，实际 ${n}`);
 });
 
-test('21 个工具 / 94 个动作逐个真调：不崩、不空、不是"不认识的动作"', async (t) => {
+test('22 个工具 / 97 个动作逐个真调：不崩、不空、不是"不认识的动作"', async (t) => {
   if (!reachable) {
     t.skip(`${BASE} 不可达`);
     return;

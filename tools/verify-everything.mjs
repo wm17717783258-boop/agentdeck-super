@@ -486,6 +486,23 @@ async function main() {
     } finally { b.done(); }
     say('');
 
+    say('【deck_sync】3 个动作：看清单 → 加密打包 → 合并进来（跨设备）');
+    const b7 = await boot('sync');
+    const b8 = await boot('sync2');
+    try {
+      const info = await b7.call('deck_sync', { action: 'info' });
+      chk(/会被带走/.test(info), 'info 看会带走什么', info.split('\n')[0].slice(0, 50));
+      const packed = await b7.call('deck_sync', { action: 'pack', passphrase: '口令密码123' });
+      chk(/已打包/.test(packed), 'pack 加密打包', packed.split('\n')[0].slice(0, 60));
+      const blob = (packed.match(/NEXISYNC1\.[A-Za-z0-9_-]+/) || [])[0];
+      chk(Boolean(blob), 'pack 给出了加密串', blob ? `${blob.length} 字符` : '');
+      const wrong = await b8.call('deck_sync', { action: 'apply', blob, passphrase: '错口令999' });
+      chk(/解不开/.test(wrong), 'apply 错口令解不开（真加密）', wrong.slice(0, 50));
+      const ok2 = await b8.call('deck_sync', { action: 'apply', blob, passphrase: '口令密码123' });
+      chk(/已合并/.test(ok2), 'apply 对口令合并成功', ok2.split('\n')[0].slice(0, 50));
+    } finally { b7.done(); b8.done(); }
+    say('');
+
     say('【4 个无 action 的工具】：super_agent / team_orchestrate / pet_meeting / twin_remember');
     const b6 = await boot('misc');
     try {

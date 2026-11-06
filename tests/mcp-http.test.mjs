@@ -118,14 +118,14 @@ test('POST /v1/mcp：initialize 回 nexi 与协议版本', async () => {
   }
 });
 
-test('POST /v1/mcp：tools/list 与宿主注册的工具完全一致（21 个）', async () => {
+test('POST /v1/mcp：tools/list 与宿主注册的工具完全一致（22 个）', async () => {
   const { post, state, cleanup } = await boot();
   try {
     const res = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
     const json = JSON.parse(res.body);
     const names = json.result.tools.map((t) => t.name);
     assert.equal(names.length, state.tools.length, 'HTTP 端点数必须等于宿主工具数');
-    assert.equal(names.length, 21);
+    assert.equal(names.length, 22);
     for (const must of ['team_board', 'deck_meeting', 'deck_automation', 'pet_skin', 'deck_team', 'deck_policy', 'deck_audit']) {
       assert.ok(names.includes(must), `少工具：${must}`);
     }
@@ -226,7 +226,7 @@ test('GET /v1/mcp：同一 URL 给接入清单，并如实写清 transport 与"�
     const json = JSON.parse(res.body);
     assert.equal(json.transport, 'stdio+streamable-http');
     assert.equal(json.httpEndpoint, '/adbp/v1/mcp');
-    assert.equal(json.tools.length, 21);
+    assert.equal(json.tools.length, 22);
     assert.equal(json.readOnly, false);
     assert.ok(json.httpNotes.join(' ').includes('没有 SSE'));
   } finally {
@@ -241,8 +241,8 @@ test('GET /v1/mcp（只读）：清单也只列读工具，并明写 readOnly', 
     assert.equal(res.statusCode, 200, res.body);
     const json = JSON.parse(res.body);
     assert.equal(json.readOnly, true);
-    assert.ok(json.tools.length > 0 && json.tools.length < 21, `工具数不对：${json.tools.length}`);
-    assert.equal(json.tools.length, 17, '21 个工具减掉 4 个整体不可用的（编排/干活/开会/写记忆）');
+    assert.ok(json.tools.length > 0 && json.tools.length < 22, `工具数不对：${json.tools.length}`);
+    assert.equal(json.tools.length, 18, '22 个工具减掉 4 个整体不可用的（编排/干活/开会/写记忆）');
     assert.ok(json.tools.includes('agent_passport'), '通行证在只读模式下还能 ver卡、看账本');
     assert.ok(!json.tools.includes('super_agent'));
     assert.ok(json.tools.includes('twin_recall'));
