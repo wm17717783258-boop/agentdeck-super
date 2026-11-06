@@ -30,7 +30,7 @@ const NO_RECORD = argv.includes('--no-record');
 const SUITES = [
   {
     id: 'gate',
-    what: '全量回归（729 条单测）+ 红队 11 条',
+    what: '全量回归（758 条单测）+ 红队 11 条',
     cmd: ['tools/verify-security.mjs'],
     evidence: [`gate-${ver}.txt`, `security-redteam-${ver}.txt`],
     slow: true,
@@ -89,6 +89,27 @@ const SUITES = [
     cmd: ['tools/verify-installed-security.mjs'],
     evidence: [`installed-security-${ver}.txt`],
     optional: true,   // profile 里没装就能跳过，不算失败
+  },
+  {
+    id: 'all-actions',
+    what: '全功能遍历：21 工具 / 105 个动作逐个真调（不崩、不空、不是"不认识的动作"）',
+    cmd: ['--test', '--test-concurrency=1', 'tests/e2e-all-actions.test.mjs'],
+    evidence: [],
+    optional: true,
+  },
+  {
+    id: 'side-effects',
+    what: '副作用验证：每个写动作之后**独立读回来**核对（写→读得到；删→读不到）',
+    cmd: ['--test', '--test-concurrency=1', 'tests/e2e-side-effects.test.mjs'],
+    evidence: [],
+    optional: true,
+  },
+  {
+    id: 'deck-buttons',
+    what: '页面按钮真点：9 个表单逐个 POST，核对话术与真实结果是否一致',
+    cmd: ['--test', '--test-concurrency=1', 'tests/e2e-deck-buttons.test.mjs'],
+    evidence: [],
+    optional: true,
   },
   {
     id: 'plugin-install',

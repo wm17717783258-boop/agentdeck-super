@@ -508,3 +508,18 @@ test('deck_policy 文件头自述不许再说"本工具只做判定、不会拦�
   assert.doesNotMatch(src, /本工具只做"判定"，它不会拦截任何工具调用/,
     '那句是接线之前的说明，留着会让人以为写了规则也不生效');
 });
+
+test('deck_policy check 的提醒不许再说"接线后才会拦"——已经接线了', async () => {
+  const { root, done } = freshRoot('check-wired');
+  try {
+    const tool = plain(createPolicyTool({ root: () => root }));
+    await tool.execute({ action: 'set', rule: { id: 'd1', match: { tool: 'pet_skin' }, effect: 'deny' } });
+    const text = await tool.execute({ action: 'check', tool: 'pet_skin', toolAction: 'list' });
+    assert.match(text, /判定：拒绝/);
+    assert.match(text, /已经生效/, '该说清规则已经生效');
+    assert.doesNotMatch(text, /接线后才会真正拦截/, '这句是接线之前的，留着会让人以为写了没用');
+    assert.doesNotMatch(text, /仍会执行/, '这句现在反了：拒绝了就是不会执行');
+  } finally {
+    done();
+  }
+});
