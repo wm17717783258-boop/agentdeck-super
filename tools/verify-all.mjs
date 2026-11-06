@@ -30,7 +30,7 @@ const NO_RECORD = argv.includes('--no-record');
 const SUITES = [
   {
     id: 'gate',
-    what: '全量回归（707 条单测）+ 红队 11 条',
+    what: '全量回归（709 条单测）+ 红队 11 条',
     cmd: ['tools/verify-security.mjs'],
     evidence: [`gate-${ver}.txt`, `security-redteam-${ver}.txt`],
     slow: true,

@@ -11,7 +11,10 @@
    ✅ Claude Code       装→宿主自报(nexi)→卸→配置逐字节还原
    ✅ Codex             同上
    ✅ Gemini CLI        同上（1.10.0 新认证）
-   🟡 Claude Desktop    只验到配置层（本机没有它的命令行，无法真调用）→ 标「实验性」
+   🟡 Claude Desktop    只验到配置层 → 标「实验性」。**原因是平台事实**：本机实测
+                        claude-desktop.exe --version 能出 4.4212.0，但 --help / mcp list
+                        会把桌面 GUI 拉起来并挂住，它不是 CLI。所以只能验
+                        「配置写对 + 装卸一致（逐字节还原）」，验不了「宿主自己认不认」。
    ⚪ Cursor / Windsurf / Cline / Continue   本机未安装 —— **拒绝伪造配置**
    逻辑：没装的宿主就算不出来。要凑满 8 个只能去装它们，不能编。
    1.10.0 的进展：修掉"只按配置文件在不在判装没装"，Gemini CLI 由假「未安装」变成真认证；

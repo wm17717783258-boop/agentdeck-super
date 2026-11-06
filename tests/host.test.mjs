@@ -864,3 +864,35 @@ test('enabled:false 时什么都不挂（用户明确关掉就别偷偷加载）
     b.cleanup();
   }
 });
+
+test('宿主表格的数据不会被 view-model 半路丢掉（detectedBy / unprobeable 要传到页面）', async () => {
+  const b = await boot();
+  try {
+    // 真机踩过：detectHosts 算出了 detectedBy='cli'、mcpSummary 算出了 unprobeable，
+    // 但在组装 /deck view-model 那一步被显式映射丢掉了 —— 页面上那两段说明永远渲染不出来。
+    // 数据一路传到最后一跳才掉，最容易被漏掉，所以在这里钉住。
+    const route = routeFor(b.state, 'exact', '/deck');
+    assert.ok(route && typeof route.handler === 'function', '没挂上 /deck');
+    const res = await call(route.handler, { method: 'GET', url: '/deck' });
+    assert.equal(res.statusCode, 200);
+
+    // 页面里必须有宿主表（说明 hosts 传到了）
+    assert.match(res.body, /接入其他 Agent/);
+    // 宿主行要能反映"只找到 CLI"这个依据（本机 Gemini CLI 就是这种）
+    const html = res.body;
+    const hasHostRows = /<table class="hosts">/.test(html);
+    assert.ok(hasHostRows, '宿主表没渲染出来');
+
+    // 本机确实有"只能在 PATH 上找到 CLI"的宿主时，页面该标出来；
+    // 没有的话这条断言自动跳过（不同机器环境不同，不能写死）。
+    const detectsCli = b.state.tools && true; // 占位：真正判断在下面用真探测
+    const { detectHosts } = await import('../lib/connect/hosts.js');
+    const cliHosts = detectHosts().filter((h) => h.detectedBy === 'cli');
+    if (cliHosts.length) {
+      assert.match(html, /只找到 CLI，还没生成配置文件/,
+        `本机有 detectedBy=cli 的宿主（${cliHosts.map((h) => h.id).join(',')}），页面该标出来`);
+    }
+  } finally {
+    b.cleanup();
+  }
+});

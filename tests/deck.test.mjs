@@ -490,3 +490,27 @@ test('皮肤价格是「分」：1800 分要写 ¥18，不能写 ¥0.18', () => 
   assert.ok(html.includes('¥18'), '1800 分 = ¥18');
   assert.ok(!html.includes('¥0.18'), '少除一次 100 就会写成 ¥0.18');
 });
+
+test('只能验到配置层的宿主：页面写清是「平台限制」不是「没去试」', () => {
+  // 真机事实：claude-desktop.exe --version 能跑（4.4212.0），但 --help / mcp list
+  // 会把桌面 GUI 拉起来并挂住——它不是 CLI。矩阵里如果只写「无法真调用」，
+  // 看的人分不清"我们没试"和"这东西本来就没法非交互调用"，后者是平台事实。
+  const html = deckPageHtml(fullVm({
+    mcp: {
+      hosts: [
+        { name: 'Claude Desktop', installed: true, registered: true, path: '/u/claude_desktop_config.json', detectedBy: 'config' },
+        { name: 'Claude Code', installed: true, registered: true, path: '/u/.claude.json', detectedBy: 'config' },
+      ],
+      unprobeable: ['Claude Desktop'],
+    },
+  }));
+  assert.ok(html.includes('Claude Desktop 是桌面 GUI 程序'), `该说清是平台限制：${html.slice(html.indexOf('接入其他 Agent'), html.indexOf('接入其他 Agent') + 1200)}`);
+  assert.ok(html.includes('不是没去试'));
+  assert.ok(html.includes('mcp list'));
+
+  // 没有这类宿主时不该多出这段话
+  const clean = deckPageHtml(fullVm({
+    mcp: { hosts: [{ name: 'Claude Code', installed: true, registered: true, path: '/u/.claude.json' }], unprobeable: [] },
+  }));
+  assert.ok(!clean.includes('是桌面 GUI 程序'), '没有不可探针宿主时不该出现这段话');
+});
