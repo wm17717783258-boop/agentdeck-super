@@ -32,3 +32,6 @@ tmp/
 certs/
 *.pem
 !assets/**/*.pem
+
+# 官方发布工具（本机下载的 exe，不进仓库）
+.tools/
