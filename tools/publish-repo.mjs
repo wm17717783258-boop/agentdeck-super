@@ -11,6 +11,7 @@
  *   node tools/publish-repo.mjs                          # 干跑：只打印会传哪些文件、跳过哪些
  *   node tools/publish-repo.mjs --push                   # 真建仓库并推（要 GITHUB_TOKEN）
  *   node tools/publish-repo.mjs --push --repo agentdeck-super --private false
+ *   node tools/publish-repo.mjs --push --no-create --public  # 顺手把仓库转公开（不可逆）
  *
  * 令牌从哪来（二选一）：
  *   A. 经典令牌：GitHub → Settings → Developer settings → Personal access tokens (classic)
@@ -36,6 +37,7 @@ const opt = (name, def = '') => {
 
 const push = flag('--push');
 const noCreate = flag('--no-create');
+const makePublic = flag('--public');
 const repoName = opt('--repo', 'agentdeck-super');
 const isPrivate = opt('--private', 'false') === 'true';
 const branch = opt('--branch', 'main');
@@ -257,6 +259,23 @@ if (isEmpty) {
   ok(`已初始化仓库（占位提交 ${bootSha.slice(0, 7)}，随后会被这次提交覆盖历史内容）`);
 }
 
+// 3.3c base_tree 是「合并」语义：远端有、本地没有的文件不会自动消失，必须显式写
+// sha:null 才删得掉。不加这一步，早就挪进 internal/ 的商业文档会永远躺在公开仓库里。
+const removed = [];
+if (baseTree) {
+  const listing = await api('GET', `/repos/${owner}/${repoName}/git/trees/${baseTree}?recursive=1`);
+  const remotePaths = ((listing.json && listing.json.tree) || [])
+    .filter((e) => e.type === 'blob' || e.type === 'commit')
+    .map((e) => e.path);
+  const localPaths = new Set(files.map((f) => f.rel));
+  for (const p of remotePaths) if (!localPaths.has(p)) removed.push(p);
+  if (removed.length) {
+    warn(`远端有 ${removed.length} 个文件本地已经没有，这次一并删掉：`);
+    for (const p of removed.slice(0, 30)) log(`    - ${p}`);
+    if (removed.length > 30) log(`    … 另有 ${removed.length - 30} 个`);
+  }
+}
+
 // 3.4 一次建树（inline content，不用逐个 blob 往返）
 const tree = files.map((f) => ({
   path: f.rel,
@@ -264,6 +283,7 @@ const tree = files.map((f) => ({
   type: 'blob',
   content: readFileSync(f.full, 'utf8'),
 }));
+for (const p of removed) tree.push({ path: p, mode: '100644', type: 'blob', sha: null });
 const treeRes = await api('POST', `/repos/${owner}/${repoName}/git/trees`, {
   ...(baseTree ? { base_tree: baseTree } : {}),
   tree,
@@ -298,6 +318,18 @@ if (refRes.status !== 200 && refRes.status !== 201) {
   bad(`更新分支失败（HTTP ${refRes.status}）：${JSON.stringify(refRes.json).slice(0, 300)}`);
 }
 ok(`分支 ${branch} → ${newCommit.slice(0, 7)}`);
+
+// 3.6 可见性 / 描述：只在明确要求时才改（转公开不可逆，绝不能顺手做）
+if (makePublic) {
+  const patch = await api('PATCH', `/repos/${owner}/${repoName}`, { private: false, description: desc });
+  if (patch.status === 200) {
+    ok(`仓库已设为公开：${patch.json.html_url}`);
+  } else {
+    warn(`改可见性失败（HTTP ${patch.status}）：${JSON.stringify(patch.json).slice(0, 200)}`);
+  }
+} else {
+  warn('可见性没动（要转公开加 --public；这步不可逆，所以不默认做）');
+}
 
 log(`\n仓库地址：https://github.com/${owner}/${repoName}`);
 log('下一步（把地址写进 package.json / 市场条目）：');
