@@ -103,7 +103,12 @@ function cmdIssue() {
 
   console.log('✓ 授权码已生成（复制下面整行发给客户）\n');
   console.log(key);
-  console.log(`\n  档位：${tierDef.label}（¥${tierDef.price}/月参考价）`);
+  const priceHint = tierDef.price <= 0
+    ? '免费'
+    : tierDef.yearPrice && tierDef.yearPrice !== tierDef.price
+      ? `¥${tierDef.price}/月，或 ¥${tierDef.yearPrice}/年`
+      : `¥${tierDef.price} 起`;
+  console.log(`\n  档位：${tierDef.label}（${priceHint}）`);
   console.log(`  客户：${to}`);
   console.log(`  到期：${new Date(claims.exp * 1000).toLocaleString('zh-CN')}（${days} 天）`);
   console.log(`  席位：${claims.seats}${skins.length ? `  皮肤：${skins.join(',')}` : ''}`);

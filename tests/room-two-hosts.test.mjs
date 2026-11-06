@@ -153,13 +153,16 @@ test('双机协同：房主付费建房间，客人零授权进房间，任务�
     const pulledB = await roomB.pull({ waitSec: 5 });
     assert.equal(pulledB.ok, true, pulledB.reason);
     assert.ok(pulledB.fetched >= 1, 'B 应该拉到 A 推的任务事件');
-    const bTasks = hostB.board.listTasks(hostB.teamId, {});
+    // 房间绑定「房主的小组」：两台机器从此看的是同一个小组 id，而不是各看各的
+    const sharedTeam = String(joined.room?.teamId || '');
+    assert.equal(sharedTeam, String(hostA.teamId), '房间里的小组 id 必须是房主那个');
+    const bTasks = hostB.board.listTasks(sharedTeam, {});
     const mirrored = bTasks.find((t) => t.title === '写接口文档');
     assert.ok(mirrored, `B 的任务板上没有镜像任务（实际：${bTasks.map((t) => t.title).join('、') || '空'}）`);
     assert.equal(mirrored.context?.roomOrigin?.id, t1.id, '镜像任务要记住来源坐标，才认领得回去');
 
     // ── 认领回流：B 认领 → A 看到 ─────────────────────────────────────────
-    const claimed = hostB.board.claimTask(hostB.teamId, mirrored.id, '小王');
+    const claimed = hostB.board.claimTask(sharedTeam, mirrored.id, '小王');
     assert.equal(claimed, true, 'B 应该能认领镜像任务');
     const ref = roomB.refFor(mirrored.id);
     assert.equal(ref.taskId, t1.id, '镜像任务的坐标要指回「房主那边的原任务 id」');
@@ -199,6 +202,78 @@ test('双机协同：房主付费建房间，客人零授权进房间，任务�
     // 会话落盘：两台机器各自有房间记录，重启能续上
     assert.equal(existsSync(join(rootA, '.agentdeck', 'rooms', `${created.room.roomId}.json`)), true);
     assert.equal(existsSync(join(rootB, '.agentdeck', 'rooms', `${created.room.roomId}.json`)), true);
+  } finally {
+    if (saved === undefined) delete process.env.AGENTDECK_LICENSE_PUBKEY;
+    else process.env.AGENTDECK_LICENSE_PUBKEY = saved;
+    if (relay) {
+      try {
+        relay.child.kill();
+      } catch { /* 已退 */ }
+    }
+    for (const d of [relayDir, rootA, rootB]) {
+      try {
+        rmSync(d, { recursive: true, force: true });
+      } catch { /* Windows 文件占用，忽略 */ }
+    }
+  }
+});
+
+test('回归：客人本机没有房主的小组时，拉下来的任务必须自己长出小组并真的落板', async () => {
+  const saved = process.env.AGENTDECK_LICENSE_PUBKEY;
+  const relayDir = mkdtempSync(join(tmpdir(), 'adsk-relay2-'));
+  const rootA = mkdtempSync(join(tmpdir(), 'adsk-hA2-'));
+  const rootB = mkdtempSync(join(tmpdir(), 'adsk-hB2-'));
+  let relay = null;
+  try {
+    process.env.AGENTDECK_LICENSE_PUBKEY = pubB64;
+    assert.equal(writeLicenseKey(rootA, issuePro()).ok, true);
+
+    const hostA = makeHost(rootA);
+    relay = await startRelay(relayDir);
+
+    const roomA = createRoomClient({ relayUrl: relay.url, root: rootA, board: hostA.board, teamId: hostA.teamId, license: currentLicense(rootA) });
+    const created = await roomA.createRoom({ name: '新人进组', member: { name: '房主' } });
+    assert.equal(created.ok, true, created.reason);
+
+    const task = hostA.board.addTask(hostA.teamId, { title: '房主派的活：对接口', role: 'worker' });
+    assert.equal((await roomA.publishLocalTasks()).ok, true);
+
+    // B 是一台全新机器：任务板上一张白纸，连小组都没有（线上真实踩到的场景）
+    const boardB = createBoard({ root: rootB });
+    assert.deepEqual(boardB.listTeams(), []);
+    const roomB = createRoomClient({ relayUrl: relay.url, root: rootB, board: boardB, teamId: '', license: currentLicense(rootB) });
+
+    const joined = await roomB.joinRoom({ roomId: created.room.roomId, inviteToken: created.inviteToken, member: { name: '新人' } });
+    assert.equal(joined.ok, true, joined.reason);
+    assert.equal(String(joined.room?.teamId || ''), String(hostA.teamId), 'relay 要把房主的小组 id 发给客人');
+
+    // 复刻小组：这一步以前缺，导致远端任务无处可落，sync 数着「拉回来 1 条」板子却是空的
+    const ensured = roomB.ensureRoomTeam();
+    assert.equal(ensured.ok, true, ensured.reason);
+    assert.equal(ensured.created, true);
+    assert.equal(ensured.teamId, hostA.teamId);
+    assert.ok(boardB.getTeam(hostA.teamId), '客人本机要有同一个 id 的小组');
+
+    const pulled = await roomB.pull({ waitSec: 5 });
+    assert.equal(pulled.ok, true, pulled.reason);
+    assert.ok(pulled.fetched >= 1, 'B 应该拉到 A 推的任务事件');
+    assert.ok(pulled.applied >= 1, `必须真的落到任务板上（fetched=${pulled.fetched} applied=${pulled.applied}）`);
+
+    const mirrored = boardB.listTasks(hostA.teamId, {}).find((t) => t.context?.roomOrigin?.id === task.id);
+    assert.ok(mirrored, `B 的任务板上没有镜像任务（实际：${boardB.listTasks(hostA.teamId, {}).map((t) => t.title).join('、') || '空'}）`);
+
+    // 客人也能在这个「复刻出来的小组」里加自己的任务（线上那次的报错就在这里）
+    const bTask = boardB.addTask(hostA.teamId, { title: '我这边的活：写脚本', role: 'worker' });
+    assert.ok(bTask?.id, '客人应该能在复刻出来的小组里加任务');
+    assert.equal((await roomB.publishLocalTasks()).ok, true);
+
+    // A 回头同步，看得到 B 的活
+    const roomA2 = createRoomClient({ relayUrl: relay.url, root: rootA, board: hostA.board, teamId: hostA.teamId, license: currentLicense(rootA) });
+    assert.equal(roomA2.resume(created.room.roomId).ok, true, '房主这台机器要能接着用原来那个席位');
+    const pulledA = await roomA2.pull({ waitSec: 5 });
+    assert.equal(pulledA.ok, true, pulledA.reason);
+    const onA = hostA.board.listTasks(hostA.teamId, {}).find((t) => String(t.title).includes('写脚本'));
+    assert.ok(onA, `房主那边应该看到客人的任务（实际：${hostA.board.listTasks(hostA.teamId, {}).map((t) => t.title).join('、')}）`);
   } finally {
     if (saved === undefined) delete process.env.AGENTDECK_LICENSE_PUBKEY;
     else process.env.AGENTDECK_LICENSE_PUBKEY = saved;

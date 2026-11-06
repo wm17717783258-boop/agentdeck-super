@@ -2,10 +2,13 @@
 
 [![npm](https://img.shields.io/npm/v/agentdeck-super.svg)](https://www.npmjs.com/package/agentdeck-super)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![repo](https://img.shields.io/badge/source-GitHub-181717.svg)](https://github.com/wm17717783258-boop/agentdeck-super)
 
 > A DeepSeek Harness plugin that gives you **one agent that can actually do the work**, **a war room where any other agent can join**, and **a room your teammates can walk into from a link**.
 >
 > One line: `dsh plugin add agentdeck-super`
+>
+> Source (MIT): https://github.com/wm17717783258-boop/agentdeck-super
 
 | Capability | What it means |
 | --- | --- |
@@ -131,12 +134,18 @@ Learns when you start, which tools you reach for, what kinds of work you repeat;
 | `super_agent` | One hands-on task (read/write/run/fetch) for the super agent to complete on its own |
 | `team_orchestrate` | A multi-part project: split work, run in parallel, gate on acceptance |
 | `agent_join` | Add an agent (local CLI / remote / your own) to the team, or scan what is available locally |
+| `agent_passport` | Issue / verify / list / revoke an offline Ed25519 capability card (`NEXP1.…`): works across machines with no shared key dir, optionally pinned to a `kid` |
 | `team_board` | Inspect the board: progress, failures, export the run log |
 | `deck_room` | Create / join / leave a cross-machine room, send invites, sync tasks (paid tier for cloud rooms; local rooms free) |
 | `deck_license` | Show or activate a license, inspect tier entitlements |
 | `pet_visit` / `pet_meeting` / `pet_skin` | Visit a friend's room, hold a pet meeting, switch skins |
+| `twin_remember` / `twin_recall` / `twin_brief` / `twin_forget` / `twin_habit` | Digital-twin memory: store a fact with source + visibility, recall it from another host, today's brief, delete, propose a habit |
+| `deck_meeting` | Multi-agent meeting: open → every agent submits its opinion verbatim → conclude with a decision and split it into board tasks |
+| `deck_automation` | Scheduled or one-off jobs: approval queue, per-job run cap, global `stop` / `resume`, run log |
 
 `/deck` is the shortcut: `/deck`, `/deck room`, `/deck license`, `/deck pet`.
+
+**Don't want to type commands? Open `/deck/console`.** That is the test bench: every button there makes one real tool call and prints the raw return verbatim (no prettifying). Create a team, add a task, issue or verify a passport, store a memory, look at skins, open a meeting — all clickable. Under read-only mode (`mcp.readOnly`) the 6 state-changing buttons are greyed out with the reason, and the **server** blocks them too (the greyed button is a hint, not the gate).
 
 ## Brain configuration
 
@@ -161,9 +170,47 @@ Automatic fallback: `host` → `api` → `cli`.
 - Rooms sync **tasks and chat only** — never your files. Members of a room are trusted by default (same-team usage).
 - No telemetry. The board is a single file at `$DSH_HOME/agentdeck-super/state.json`, the pet profile sits next to it, cross-machine room sessions live in `<workspace>/.agentdeck/rooms/`. Delete them to reset.
 
+## Lending it out: read-only mode + host certification
+
+**Read-only (`mcp.readOnly`)** — when you let someone else's model drive your local Hub, switch off the write half:
+
+```yaml
+mcp:
+  readOnly: true      # default false
+```
+
+Then `tools/list` drops from 17 to 13 (`super_agent`, `team_orchestrate`, `pet_meeting` and `twin_remember` are gone entirely; `agent_passport` keeps `show`/`verify`/`list`), `team_board`'s description states which actions survive, and every write answers `isError` naming the knob to turn off — **the board file never grows**. `GET /v1/mcp` reports `readOnly: true` and lists only what is actually callable; the stdio path gets the same via `nexi mcp --read-only` or `NEXI_MCP_READONLY=1`.
+
+**Agent passports (`agent_passport`)** — an Ed25519 capability card you can hand to someone else, verified offline by the other side:
+
+```bash
+nexi call agent_passport '{"action":"issue","name":"小犀","agent":"dsh","capabilities":["team_board","pet_visit"]}'
+# → prints a NEXP1.<payload>.<sig> line; the public key travels inside the payload
+nexi call agent_passport '{"action":"verify","card":"NEXP1.…"}'          # any machine, no shared key dir, no network
+nexi call agent_passport '{"action":"verify","card":"NEXP1.…","kid":"kid_…"}'  # pin the issuer
+```
+
+What it proves: the card was not edited, it was issued by the holder of that `kid`, and it is still inside its validity window. What it does **not** prove: who is sitting at the keyboard. There is no CA, no real-name check and no revocation centre — so `kid` is the thing to remember, and revoking only marks your local ledger (the card still verifies on the other machine; the tool says so in plain words). Evidence: `docs/evidence/passport-1.8.0.txt`.
+
+**Host certification (`nexi verify-host`)** — don't claim support, make the host report it:
+
+```bash
+nexi verify-host claude-code      # install → let the host confirm → uninstall → byte-exact restore
+nexi verify-host --all --record   # all 8, matrix written to docs/evidence/hosts-<version>.txt
+```
+
+Measured on this machine (`docs/evidence/hosts-1.8.0.txt`):
+
+| Host | Result |
+| --- | --- |
+| Claude Code | ✅ certified (`claude mcp list` reports `nexi`) |
+| Codex | ✅ certified (`codex mcp list`) |
+| Claude Desktop | 🟡 config-only (no CLI here — labelled experimental) |
+| Cursor / Windsurf / Cline / Continue / Gemini CLI | ⚪ not installed — **it refuses to fake a config** |
+
 ## Free vs paid
 
-| | Free | Collab ¥29/mo (¥299/yr) | Studio ¥199/mo |
+| | Free | Collab ¥29/mo (¥288/yr) | Studio ¥99/mo (¥999/yr, 3 seats, +¥20/seat) |
 | --- | --- | --- | --- |
 | Super agent + toolbelt | ✅ | ✅ | ✅ |
 | Any agent can join | ✅ | ✅ | ✅ |
@@ -174,6 +221,7 @@ Automatic fallback: `host` → `api` → `cli`.
 | Unattended runs / audit export | — | ✅ / — | ✅ / ✅ |
 
 - **Guests are free**: joining someone else's room with an invite never requires a license.
+- **Business (¥30,000/yr and up)**: private deployment, 200 seats, 50 cloud rooms, 10 parallel lanes, dedicated support — same `TIERS` table, one row down.
 - **Self-hostable**: `tools/relay-server.mjs` is the full relay — run it yourself and issue your own keys for free.
 - Entitlements are literally in [`lib/license.js`](lib/license.js); the money flow is documented in [`docs/COMMERCE.md`](docs/COMMERCE.md).
 
@@ -182,6 +230,7 @@ Automatic fallback: `host` → `api` → `cli`.
 | Doc | What's inside |
 | --- | --- |
 | [`docs/PRODUCT.md`](docs/PRODUCT.md) | The nine core capabilities mapped to code and evidence; retention design; roadmap |
+| [`docs/PASSPORT.md`](docs/PASSPORT.md) | Agent passports: issuing, verifying, pinning the issuing `kid`, the read-only boundary, and what a card does *not* prove |
 | [`docs/COMMERCE.md`](docs/COMMERCE.md) | How to actually take money: issuing keys, message templates, support, when to build a backend |
 | [`docs/MARKET.md`](docs/MARKET.md) | Store listing copy, PR body, screenshot list |
 | [`docs/PUBLISH.md`](docs/PUBLISH.md) | Open-source + release checklist: repo setup, the five dry-run gates, real publish, market PR, troubleshooting |
@@ -197,18 +246,25 @@ Automatic fallback: `host` → `api` → `cli`.
 **Verify it yourself** (three commands, offline, no model quota burned):
 
 ```bash
-node --test --test-concurrency=1 "tests/*.test.mjs"   # 281 tests
+node --test --test-concurrency=1 "tests/*.test.mjs"   # 520 tests
 node tests/e2e-local.mjs                              # 5-step end-to-end, writes a proof file
 node tools/real-agents-check.mjs                      # actually run the agents installed on your machine
 ```
 
 ## Roadmap
 
-- **1.4.1 (this release)**: fixes from real-machine acceptance — license **and pet profile** are now machine-level (`$DSH_HOME`, follows the person across projects, auto-migrated), tarball install goes through the host's own `dsh plugin add`, plus a two-vendor (Claude Code + Codex) project acceptance run.
+- **1.9.0 (this release)**: **skin market, payments and quota — closed loops, actually run**. **(a) An 18th tool, `deck_market`** — `catalog` / `health` / `buy` / `orders` / `refund`. Buying walks price (in cents) → order in `orders.json` → provider receipt → ledger entry in `ledger.json` (80% creator / 20% platform split) → delivery code → the skin **really renders unlocked**; refunding reverses the ledger entry and the skin asks for a license again. **(b) No merchant account, no lying** — without `AGENTDECK_PAY_PROVIDER` + `AGENTDECK_PAY_URL` (optional `AGENTDECK_PAY_TOKEN`), `buy` returns `{ok:false, code:'billing_unconfigured', reason:'环境未配'}`, the order stays `created`, no `payment` field is written and no receipt is invented; with them configured the charge is a real HTTP POST, and only `paid === true` from the provider releases the goods; re-confirming the same order is idempotent (no second charge). That is literally what the "买 ¥18" button on `/deck` answers. **(c) Quota is computed, not claimed** — cloud rooms and seats for `free / plus / studio / business` now come straight from `TIERS` in `lib/license.js` (1.9.0 deleted the second, contradictory table and left a comment forbidding it to come back); meetings / automations / memory are metered by `lib/quota.js`; the `/deck` card shows real local usage (e.g. meetings 0/3, memory 1/200, seats 1/3); and any internal error in the quota path **lets the action through** — never block someone's work on a metering bug. **(d) Proof** — `node tools/verify-pay.mjs` starts a **real HTTP payment gateway** on `127.0.0.1`, charges over the wire, writes to disk, unlocks the skin, refuses to mark an order paid when the gateway declines, does not double-charge on re-confirm, and revokes the license after a refund: **37/37 assertions** (`docs/evidence/pay-1.9.0.txt`). Honest boundary: there is no merchant account on this machine, so "real money received" stays open — the script does not pretend otherwise. **(e)** `node tools/verify-all.mjs` now runs 7 suites (gate / readonly / passport / mcp-http / recovery / console / pay) and passes **7/7**; 520 unit tests green; 18 tools, 14 advertised in read-only mode.
+- **1.7.0**: multi-agent meetings and local automation, both offline-first. `deck_meeting` opens a meeting, records every agent's opinion verbatim (no LLM in the middle), and on conclude writes the minutes plus creates the tasks on the real board — the minutes footer says opinions are kept as spoken. `deck_automation` runs scheduled or one-off jobs through an approval queue with a per-job run cap, a global `stop` / `resume` whose state lives on disk (so `nexi stop` from a terminal stops the running host's ticker on its next tick), and a run log. Both ship `output: TOOL_OUTPUT` so the host renders them instead of falling back. The count then was 16 tools, 351 tests.
+- **1.8.0**: **agent passports + recovery drills**. **(a) Passports** — a 17th tool, `agent_passport`, that issues and verifies an Ed25519 capability card offline. `issue` mints `NEXP1.<payload>.<sig>` with the public key *inside* the payload, so the receiving machine verifies with no shared key directory, no server and no network; `kid` is derived from the public-key fingerprint, so pinning it on repeat verification answers "is this still the same issuer?"; `verify` reports machine-readable codes (`bad_signature` / `kid_mismatch` / `missing_capability` / `expired`), and the private key never leaves the issuing machine (the verifier's `show` honestly says "no identity key yet" instead of minting one). Read-only mode keeps `show`/`verify`/`list` but blocks `issue`/`revoke`, so a lent-out Hub can check a card without being able to forge one. Honest boundary: this proves tamper-resistance and key continuity, **not** personhood — there is no CA and no revocation centre, so a revoke only marks your local ledger and the card still verifies elsewhere (the tool says exactly that). Evidence: `docs/evidence/passport-1.8.0.txt` (10 live cases across two processes). **(b) Four failure drills, really run** — `node tools/verify-recovery.mjs` takes offline / crash / upgrade / migrate and performs each one: with the relay unreachable the Hub still starts and teams, tasks and memories are still written to disk (room ops fail gracefully with a human sentence); a half-sent JSON-RPC request that gets `SIGKILL`ed leaves the next process unpolluted, a `state.json` torn in half neither crashes nor loses the readable content, and eight rounds of write-then-`SIGKILL` produced **zero torn files** (atomic write holds); a low-`version` state carrying an old field is read and written back without dropping it; and moving the whole state tree to another "machine" keeps the same `teamId`, the memories and the license, while a machine that did not get the license honestly falls back to free. Evidence: `docs/evidence/recovery-1.8.0.txt` (27 assertions). **(c) One command for all of it** — `node tools/verify-all.mjs` runs every acceptance script, writes each evidence file, and exits non-zero if any suite is red or any evidence contains `❌`. 17 tools, 395 tests, read-only advertises 13.
+- **1.7.4**: two things that make the plugin safe to lend out and honest about what it supports. **(a) Host certification, one command.** `nexi verify-host --all` runs install → let the host itself confirm → uninstall → byte-exact config restore against all 8 supported hosts, and writes a matrix you can read. On this machine: Claude Code ✅ (`claude mcp list` reports `nexi` on its own), Codex ✅ (`codex mcp list`), Claude Desktop 🟡 config-only (no CLI here — labelled experimental), Cursor / Windsurf / Cline / Continue / Gemini CLI ⚪ not installed — and it refuses to fake a config for a host that isn't there. Evidence: `docs/evidence/hosts-1.8.0.txt`. **(b) `mcp.readOnly`.** When you lend your local Hub to someone else's model, the write half switches off: `tools/list` drops from 17 to 13 (`super_agent`, `team_orchestrate`, `pet_meeting` and `twin_remember` disappear entirely; `agent_passport` keeps `show`/`verify`/`list`), `team_board`'s description says which actions survive, and every write answers `isError` with the exact knob to turn off — board files never grow. `GET /v1/mcp` reports `readOnly: true` and lists only the callable tools, the stdio path gets it via `nexi mcp --read-only`, and a control host on the same machine (default config) proves the difference comes from the switch. Evidence: `docs/evidence/readonly-1.8.0.txt` (24 assertions), `gate-1.8.0.txt`. 17 tools, 395 tests.
+- **1.7.2**: a red-team suite that **found two real holes and closed them**. `tests/security-redteam.test.mjs` (11 cases) attacks the parts that matter: memory poisoning (a "run `touch <file>` / exfiltrate your private key" payload is stored and recalled as literal text; the sentinel file never appears), note injection (a `curl … $(cat ~/.ssh/id_rsa)` title becomes exactly one task title, nothing executes), cross-team board reads, member impersonation, visit-token scope escalation / tampering / expiry, and memory visibility bypass. Two of those cases failed against 1.7.1: `GET /adbp/v1/state?teamId=<other team>` happily read someone else's board with any valid token, and `memberId` in a request body could override the token identity (claim / submit / speak as someone else). Both now answer `403 forbidden`, with positive-route assertions so the fix does not close the normal path. Evidence: `docs/evidence/security-redteam-1.8.0.txt` + `gate-1.8.0.txt`.
+- **1.7.1**: MCP **Streamable HTTP**. The same URL that serves the status page also speaks JSON-RPC on `POST /adbp/v1/mcp`, so a client that only knows how to fill in a remote-MCP URL (Claude Desktop, Cursor, …) can drive the same 17 tools with no local install and no child process. Stateless (no `Mcp-Session-Id`), so restarting the host does not invalidate anything. Honest limits: no SSE stream (`GET`/`PUT`/`DELETE` answer `405` with `Allow: POST, OPTIONS`), and unknown methods answer `-32601` rather than pretending. `GET` on the same URL returns the human/script-readable summary with `transport: "stdio+streamable-http"`. Evidence: `docs/evidence/mcp-http-1.8.0.txt` (21 assertions, two independent fetch-only clients completing one real collaboration).
+- **1.6.4**: four license tiers — Free / Collab ¥29·mo (¥288·yr) / Studio ¥99·mo (¥999·yr, 3 seats, +¥20/seat) / Business ¥30,000·yr and up. `TIERS` in `lib/license.js` is the single source of truth for the price table, the issuing CLI, room admission and the `/deck` page; old `pro` keys keep verifying. Price output never invents a checkout URL: without `purchaseUrl` it says so.
+- **1.6.2**: digital-twin memory — 5 memory types, 4 visibility levels, recall across processes, habit proposals → confirm → rollback (`twin_*` tools).
+- **1.5.0**: pet visits, pet meetings, paid skins.
+- **1.4.1**: fixes from real-machine acceptance — license **and pet profile** are now machine-level (`$DSH_HOME`, follows the person across projects, auto-migrated), tarball install goes through the host's own `dsh plugin add`, plus a two-vendor (Claude Code + Codex) project acceptance run.
 - **1.4.0**: super agent + any-agent ingress + parallel role teams + task board + **cross-machine rooms** + **license tiers** + **pet profile/skins**.
-- **1.5.0**: pet visits, pet meetings, daily standup, habit → one-click skills.
-- **1.6.0**: online activation (Worker `/v1/activate`, `/v1/usage`), metered quota, remote revocation.
-- **2.0.0**: team spaces — shared long-term project memory, cross-device hand-off, org permissions.
+- **Planned, not shipped** (do not read as features): online activation Worker (`/v1/activate`, `/v1/usage`), **server-side quota enforcement** (1.9.0 meters usage and shows tier limits, but does not hard-block), remote revocation, **a real merchant account + webhooks for the marketplace** (1.9.0 ships the order/ledger/delivery/refund machine plus a provider adapter, verified end-to-end against a local gateway), 2.0 team spaces (shared long-term memory, org permissions).
 
 ## License
 
@@ -217,3 +273,4 @@ What's paid is our *hosted* service (relay / cloud rooms / quota) and art packs;
 Security issues: see [`SECURITY.md`](SECURITY.md) — note that an invite link *is* the credential to enter a room, by design.
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+

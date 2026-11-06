@@ -145,27 +145,47 @@ test('写盘失败不抛异常（返回 ok:false）', () => {
 
 test('权益表自洽：档位越高越多，免费版本地能力不被砍', () => {
   const free = entitlements('free');
-  const pro = entitlements('pro');
+  const plus = entitlements('plus');
   const studio = entitlements('studio');
+  const business = entitlements('business');
   assert.ok(free.localRooms >= 1, '免费版必须能用');
-  assert.ok(pro.maxSeats > free.maxSeats);
-  assert.ok(studio.maxSeats > pro.maxSeats);
-  assert.ok(studio.cloudRooms > pro.cloudRooms);
+  assert.ok(plus.maxSeats > free.maxSeats);
+  assert.ok(studio.maxSeats > plus.maxSeats);
+  assert.ok(business.maxSeats > studio.maxSeats);
+  assert.ok(studio.cloudRooms > plus.cloudRooms);
   assert.equal(free.premiumSkins, false);
   assert.equal(studio.premiumSkins, true);
   assert.equal(entitlements('不存在的档位').id, 'free');
 });
 
-test('价格表与 TIERS 对得上', () => {
+test('老档位 pro 只升不降：别名指向 plus，已发出去的码还能验通', () => {
+  assert.equal(entitlements('pro').id, 'plus');
+  assert.equal(entitlements('pro').label, '协作版');
+  assert.equal(TIERS.pro, TIERS.plus);
+  // 别名不可枚举：价格表、遍历里不会凭空多出一档
+  assert.ok(!Object.keys(TIERS).includes('pro'));
+  const v = verifyLicense(issue({ tier: 'pro', seats: 8 }), { publicKeyB64Url: pubB64, now: NOW });
+  assert.equal(v.ok, true);
+  assert.equal(v.tier, 'pro');
+  assert.equal(v.entitlements.maxSeats, 8);
+});
+
+test('价格表与 TIERS 对得上，且年付一定比按月便宜', () => {
   assert.deepEqual(
     PRICE_TABLE.map((p) => p.tier),
     Object.keys(TIERS),
   );
   assert.ok(PRICE_TABLE.every((p) => p.name && p.sell));
+  for (const row of PRICE_TABLE) {
+    const tier = TIERS[row.tier];
+    assert.ok(tier, `价格表里的 ${row.tier} 在 TIERS 里不存在`);
+    if (tier.price > 0) assert.ok(tier.yearPrice < tier.price * 13, `${row.tier} 年付没有优惠（年付 ${tier.yearPrice} vs 月付 ${tier.price}×12=${tier.price * 12}）`);
+    if (tier.id === 'studio') assert.ok(tier.extraSeat > 0, '工作室版要有加席价');
+  }
 });
 
 test('describeEntitlements 说人话', () => {
-  const s = describeEntitlements(entitlements('pro'));
+  const s = describeEntitlements(entitlements('plus'));
   assert.match(s, /协作版/);
   assert.match(s, /席位 8/);
   assert.match(s, /跨机/);
@@ -177,3 +197,4 @@ test('仓库里的公钥是合法的 Ed25519 SPKI（防止打错一次全废）'
   // 用仓库公钥验测试私钥签的码 → 必须失败（说明仓库公钥不是测试密钥，是卖家真钥）
   assert.equal(v.ok, false);
 });
+

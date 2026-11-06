@@ -114,7 +114,10 @@ test('端到端：房主建房 → 客人凭邀请进房 → 任务跨机流转�
     const pulled = await guest.pull();
     assert.equal(pulled.ok, true, pulled.reason);
     assert.ok(pulled.applied >= 1, `应该物化至少一个任务，实际 ${JSON.stringify(pulled)}`);
-    const guestTasks = env.boardB.listTasks(env.teamBId, {});
+    // 房间绑定房主的小组：客人拉下来的任务落在同一个小组 id 上
+    const sharedTeam = String(joined.room?.teamId || env.teamAId);
+    assert.equal(sharedTeam, String(env.teamAId), 'relay 要把房主的小组 id 下发给客人');
+    const guestTasks = env.boardB.listTasks(sharedTeam, {});
     assert.equal(guestTasks.length, 1);
     assert.equal(guestTasks[0].title, '写一个登录页');
     assert.match(guestTasks[0].id, /^r_[a-z0-9]{1,6}_/);
@@ -122,11 +125,11 @@ test('端到端：房主建房 → 客人凭邀请进房 → 任务跨机流转�
     // 幂等：再拉一次不产生重复任务
     const again = await guest.pull();
     assert.equal(again.ok, true);
-    assert.equal(env.boardB.listTasks(env.teamBId, {}).length, 1, '重复拉取不能长出重复任务');
+    assert.equal(env.boardB.listTasks(sharedTeam, {}).length, 1, '重复拉取不能长出重复任务');
 
     // 客人认领并完成 → 推回房主（用 refFor 取「房间坐标」，跨机 id 才不会错位）
-    const guestTask = env.boardB.listTasks(env.teamBId, {})[0];
-    assert.equal(env.boardB.claimTask(env.teamBId, guestTask.id, '客人'), true);
+    const guestTask = env.boardB.listTasks(sharedTeam, {})[0];
+    assert.equal(env.boardB.claimTask(sharedTeam, guestTask.id, '客人'), true);
     const claimRef = guest.refFor(guestTask.id);
     assert.equal(claimRef.originSeat, owner.session().seatId, '远端任务的来源席位应该是房主');
     assert.equal(

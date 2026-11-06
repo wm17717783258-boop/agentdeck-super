@@ -1,0 +1,29 @@
+# /visit 落地页：4 个输入 × 真 HTTP 断言 + 真截图（1.6.5）
+# 生成时间：2026-11-05T11:13:07.793Z · 端口 57981
+
+## HTTP 断言
+
+| 输入 | 状态码 | 签名有效 | 签名对不上 | 解析不出来 | 「邀请你去串门」标题 |
+| --- | --- | --- | --- | --- | --- |
+| good | 200 | 有 | — | — | 有 |
+| tampered | 200 | — | 有 | — | — |
+| noToken | 200 | — | — | — | — |
+| badToken | 200 | — | — | 有 | 有 |
+
+期望：`good` 只有「签名有效」；`tampered` 只有「签名对不上」且**没有**邀请标题；
+`noToken` / `badToken` 三个签名结论都不出现，页面 200 不白屏。
+
+## 截图
+
+用的浏览器：`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`（`--headless=new --screenshot`）
+
+- `visit-page-1.6.5.png`（good）→ 115727 字节
+- `visit-page-tampered-1.6.5.png`（tampered）→ 58314 字节
+- `visit-page-no-token-1.6.5.png`（noToken）→ 17628 字节
+- `visit-page-bad-token-1.6.5.png`（badToken）→ 51370 字节
+
+## 收摊
+
+- 演示主机已关；`D:\demo\visitpage` 连同签名私钥 `visit-key.json` 一起删掉——
+  截图里那条 `dsh://` 深链因此**再也签不出新东西**，它只是张图。
+- 邀请令牌只出现在本次运行的内存里，长度 739 字符，没写进任何文件。

@@ -263,7 +263,7 @@ export function apply(ctx) {
 $env:Path = "$env:TEMP\adtest-pnpm\node_modules\.bin;$env:Path"   # dsh plugin 内部要 pnpm
 cd D:\agentdeck-super
 npm pack
-# agentdeck-super-1.4.1.tgz · 约 313 KiB · 58 files（最终包，含机级授权/桌宠档案迁移）
+# agentdeck-super-1.4.1.tgz · 约 319 KiB · 60 files（最终包，含机级授权/桌宠档案迁移）
 
 dsh plugin --profile agentdecktest add "file:D:/agentdeck-super/agentdeck-super-1.4.1.tgz"
 # + agentdeck-super 1.4.1

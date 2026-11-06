@@ -352,6 +352,9 @@ export async function startRelayServer(opts = {}) {
           syncToken: seat.syncToken,
           roomId: room.id,
           name: room.name,
+          // 房主小组 id 一起发下去：客人本机要靠它复刻同一个小组，
+          // 否则远端任务拉下来无处可落（"team not found"，板子永远空的）
+          teamId: room.teamId || '',
           maxSeats: room.maxSeats,
           members: room.seats.filter((s) => !s.leftAt).map(publicMember),
         });
@@ -400,6 +403,7 @@ export async function startRelayServer(opts = {}) {
         return send(res, 200, {
           roomId: room.id,
           name: room.name,
+          teamId: room.teamId || '',
           owner: room.owner,
           createdAt: room.createdAt,
           closed: Boolean(room.closedAt),

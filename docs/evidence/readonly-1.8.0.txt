@@ -1,0 +1,71 @@
+# M4.5 真机证据：MCP 只读模式（mcp.readOnly，只给看不给改）（1.8.0）
+# 2026-11-06T04:19:12.022Z
+
+## 0. 这次验的是哪份东西
+
+- 仓库版本：`1.8.0`（`package.json`）
+- 装进 `web` profile 的那份：`1.8.0`
+- 临时目录（不碰真机数据）：`D:\demo\readonly`
+
+## 1. 宿主 A：`mcp.readOnly: true`
+
+- 宿主地址：`http://127.0.0.1:57918`（真 `dsh --profile web`，PID 27608）
+- initialize 里的自述：本机 Nexi 灵犀（只读模式）：只能看任务板、看分身在记什么、看桌宠名片与皮肤状态。写动作（建组、派活、串门、改画像、跑自动化）在只读模式下不执行。
+- GET /v1/mcp：readOnly=`true`，清单里 13 个工具
+- tools/list：13 个 —— agent_join、team_board、deck_license、deck_room、deck_meeting、deck_automation、agent_passport、pet_visit、pet_skin、twin_recall、twin_brief、twin_forget、twin_habit
+
+## 2. 宿主 A：写动作真被拒，且盘上没多东西
+
+```
+create   → isError=true  错误：只读模式（mcp.readOnly=true）：team_board action=create 会改状态，这里不执行。只读模式下它只放行：list / stats / events / teams。
+add      → isError=true  错误：只读模式（mcp.readOnly=true）：team_board action=add 会改状态，这里不执行。只读模式下它只放行：list / stats / events / teams。
+remember → isError=true  错误：只读模式（mcp.readOnly=true）：twin_remember 会改状态，这里不执行。这个工具在只读模式下整体关闭；要用请让宿主进程把 mcp.readOnly 关掉再重连。
+meeting  → isError=true  错误：只读模式（mcp.readOnly=true）：deck_meeting action=open 会改状态，这里不执行。只读模式下它只放行：show / list。
+list     → isError=false  {"text":"【team_board】当前没有绑定小组，无法操作任务板。请传 teamId，或先用 {\"action\":\"create\",\"name\":\"…\"} 建一个小组，也可以用 {\"action\":\"team…
+recall   → isError=false  {"text":"【twin_recall】没找到相关记忆。\n现有记忆 0 条。可以换更短的关键词，或加 {\"any\":true} 看最近记了什么。"}
+```
+
+## 3. 对照组：同一台机器、默认配置的宿主（证明差别来自开关）
+
+- 宿主 B：`http://127.0.0.1:51595`（PID 26160），tools/list 17 个，readOnly=`false`
+```
+create → isError=false  {"text":"【team_board】已创建小组 team_45e6e12014（普通模式能建）\n目标：（未填写，建议补 goal 便于之后找回上下文）\n成员：（暂无，可用 agent_join 或 super_agent 带入）\…
+add    → isError=false  {"text":"【team_board】已添加任务 task_e045fcf747\n标题：普通模式能加的任务\n角色：worker\n验收：（未填写，建议补上）\n依赖：无（可立即开始）"}
+list   → {"text":"【team_board】小组 team_45e6e12014 任务（1 条）\n\n· task_e045fcf747 [pending] 普通模式能加的任务  角色:worker\n\n进度：完成 0/1"}
+```
+
+## 4. CLI（stdio）：`nexi mcp --read-only`
+
+- 回包 4 条；tools/list 14 个；add isError=true
+```
+错误：只读模式（mcp.readOnly=true）：team_board action=add 会改状态，这里不执行。只读模式下它只放行：list / stats / events / teams。
+```
+
+## 结论
+
+- ✔ initialize 自报只读模式　（本机 Nexi 灵犀（只读模式）：只能看任务板、看分身在记什么、看桌宠名片与皮肤状态。写动作（建组、派活、串门、改画像、跑自动化）在只读模式下不执行。）
+- ✔ GET /v1/mcp 的 readOnly 字段为 true　（true）
+- ✔ 清单页工具数和 tools/list 一致（网页上看到的=真能调的）　（13 vs 13）
+- ✔ tools/list 不再广告 super_agent　（agent_join,team_board,deck_license,deck_room,deck_meeting,deck_automation,agent_passport,pet_visit,pet_skin,twin_recall,twin_brief,twin_forget,twin_habit）
+- ✔ tools/list 不再广告 twin_remember　（agent_join,team_board,deck_license,deck_room,deck_meeting,deck_automation,agent_passport,pet_visit,pet_skin,twin_recall,twin_brief,twin_forget,twin_habit）
+- ✔ tools/list 仍然给 twin_recall（只读≠残废）　（agent_join,team_board,deck_license,deck_room,deck_meeting,deck_automation,agent_passport,pet_visit,pet_skin,twin_recall,twin_brief,twin_forget,twin_habit）
+- ✔ team_board 描述里标明只剩哪些动作　（直接读写小组任务板：建小组/查小组/查任务/加任务/标记完成/领取任务/看统计和事件流。什么时候用：你要把长任务记下来防止遗漏、查看别人做到哪了、或者把某条任务标成完成/失败。第一次用并且还没有小组时，先用 action:"create" …）
+- ✔ 写动作 create 被拒（isError）　（错误：只读模式（mcp.readOnly=true）：team_board action=create 会改状态，这里不执行。只读模式下它只放行：list / …）
+- ✔ 写动作 add 被拒（isError）　（错误：只读模式（mcp.readOnly=true）：team_board action=add 会改状态，这里不执行。只读模式下它只放行：list / sta…）
+- ✔ 写动作 twin_remember 被拒　（错误：只读模式（mcp.readOnly=true）：twin_remember 会改状态，这里不执行。这个工具在只读模式下整体关闭；要用请让宿主进程把 mcp…）
+- ✔ 写动作 deck_meeting open 被拒　（错误：只读模式（mcp.readOnly=true）：deck_meeting action=open 会改状态，这里不执行。只读模式下它只放行：show / …）
+- ✔ 读动作 team_board list 照常返回　（{"text":"【team_board】当前没有绑定小组，无法操作任务板。请传 teamId，或先用 {\"action\":\"create\",\"nam…）
+- ✔ 读动作 twin_recall 照常返回　（{"text":"【twin_recall】没找到相关记忆。\n现有记忆 0 条。可以换更短的关键词，或加 {\"any\":true} 看最近记了什么。"}）
+- ✔ 任务板里没有那条"不该出现的任务"　（{"text":"【team_board】当前没有绑定小组，无法操作任务板。请传 teamId，或先用 {\"action\":\"create\",\"name\":\"…\"} 建一个小组，也可以用 {\"action\":\"team…）
+- ✔ 记忆里没有那条"不该记住的秘密"　（{"text":"【twin_recall】没找到相关记忆。\n现有记忆 0 条。可以换更短的关键词，或加 {\"any\":true} 看最近记了什么。"}）
+- ✔ 盘上 board.json 里也没有那条任务　（board.json 不存在（连组都没建））
+- ✔ 对照组 tools/list 是完整 17 个　（17）
+- ✔ 对照组 readOnly=false　（false）
+- ✔ 对照组 create 成功（不是工具坏了）　（{"text":"【team_board】已创建小组 team_45e6e12014（普通模式能建）\n目标：（未填写，建议补 goal 便于之后找回上下文）\…）
+- ✔ 对照组 add 成功且任务板上能看到　（{"text":"【team_board】小组 team_45e6e12014 任务（1 条）\n\n· task_e045fcf747 [pending] 普通模式能加的任务  角色:worker\…）
+- ✔ CLI 只读：tools/list 少于 17 个（13 = 17 - 4 个整体不可用）　（14）
+- ✔ CLI 只读：add 返回 isError　（错误：只读模式（mcp.readOnly=true）：team_board action=add 会改状态，这里不执行。只读模式下它只放行：list / sta…）
+- ✔ CLI 只读：list 正常返回　（【team_board】当前没有绑定小组，无法操作任务板。请传 teamId，或先用 {"action":"create","name":"…"} 建一个小组，…）
+- ✔ CLI 只读：板上没有"CLI 不该加的"　（【team_board】当前没有绑定小组，无法操作任务板。请传 teamId，或先用 {"action":"create","name":"…"} 建一个小组，也可以用 {"action":"team…）
+
+**24 过 / 0 失败**（共 24 条断言）

@@ -12,13 +12,14 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac, createPrivateKey, generateKeyPairSync, sign as cryptoSign } from 'node:crypto'
 
 import { createBoard } from '../lib/engine/board.js'
 import { createProfileStore } from '../lib/pet/profile.js'
 import { createPetLayer, petTools, PET_TOOL_NAMES } from '../lib/pet/index.js'
 import {
   DEFAULT_TTL_MS,
+  VISIT_KEY_FILE,
   VISIT_LOG_FILE,
   VISIT_SECRET_FILE,
   acceptInvite,
@@ -78,6 +79,10 @@ function secretOf(root) {
   return fs.readFileSync(path.join(root, '.agentdeck', 'pet', VISIT_SECRET_FILE), 'utf8').trim()
 }
 
+function keyFileOf(root) {
+  return JSON.parse(fs.readFileSync(path.join(root, '.agentdeck', 'pet', VISIT_KEY_FILE), 'utf8'))
+}
+
 function payloadOf(token) {
   const [body] = String(token).split('.')
   return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'))
@@ -87,7 +92,28 @@ function signSecret(secret, body) {
   return createHmac('sha256', secret).update(body).digest('base64url')
 }
 
-/** 用本机密钥手搓一张 token：用来测坏 scope / 坏版本 / 篡改 */
+/** 造一把一次性的 ed25519 密钥（模拟「另一个签发票据的人」） */
+function newKeypair() {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+  return {
+    pub: publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
+    priv: privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64url'),
+  }
+}
+
+function signWith(priv, body) {
+  const key = createPrivateKey({ key: Buffer.from(priv, 'base64url'), format: 'der', type: 'pkcs8' })
+  return cryptoSign(null, Buffer.from(body, 'utf8'), key).toString('base64url')
+}
+
+/** 用一把自己的 ed25519 私钥手搓一张 v2 token：用来测坏 scope / 坏版本 / 篡改 */
+function forgeV2Token(payload, { priv } = {}) {
+  const key = priv || newKeypair().priv
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  return `${body}.${signWith(key, body)}`
+}
+
+/** v1 老令牌（HMAC）：1.6.3 之前发出去的邀请函长这样，1.6.4 仍然读得懂 */
 function forgeToken(root, payload, { secret } = {}) {
   const key = secret || secretOf(root)
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
@@ -109,7 +135,7 @@ function freshTeam() {
   return { board, teamId: team.id }
 }
 
-test('makeInvite：token / url / exp 都对，密钥与串门记录落在 .agentdeck/pet 下', () => {
+test('makeInvite：token / url / exp 都对，Ed25519 密钥对与串门记录落在 .agentdeck/pet 下', () => {
   const root = tempRoot('invite')
   const store = richStore(root)
   const invite = makeInvite({ profile: store, ttlMs: 2 * 60 * 60 * 1000, now: () => FIXED })
@@ -132,13 +158,19 @@ test('makeInvite：token / url / exp 都对，密钥与串门记录落在 .agent
   assert.deepEqual(invite.card.capabilities, ['爱写文档', '爱跑测试', '当测试员', '爱喝咖啡'])
   assert.deepEqual(Object.keys(invite.card).sort(), ['capabilities', 'habitsTop3', 'name', 'petSkin'])
 
-  // 密钥：64 位 hex，落在 .agentdeck/pet/visit-secret，不出现在 token 里
-  const secretFile = path.join(root, '.agentdeck', 'pet', VISIT_SECRET_FILE)
-  assert.equal(fs.existsSync(secretFile), true)
-  assert.match(fs.readFileSync(secretFile, 'utf8').trim(), /^[0-9a-f]{64}$/)
-  assert.equal(invite.ephemeralSecret, false)
-  assert.ok(!invite.token.includes(secretOf(root)))
-  assert.ok(!invite.url.includes(secretOf(root)))
+  // 密钥对落在 .agentdeck/pet/visit-key.json；公钥随邀请函出门，私钥一个字节都不出门
+  const keyFile = path.join(root, '.agentdeck', 'pet', VISIT_KEY_FILE)
+  assert.equal(fs.existsSync(keyFile), true)
+  const stored = keyFileOf(root)
+  assert.equal(stored.alg, 'ed25519')
+  assert.match(stored.pub, /^[A-Za-z0-9_-]{40,}$/)
+  assert.match(stored.priv, /^[A-Za-z0-9_-]{40,}$/)
+  assert.equal(invite.ephemeralKey, false)
+  assert.equal(invite.keyPath, keyFile)
+  assert.match(invite.kid, /^kid_[0-9a-f]{12}$/)
+  assert.equal(payloadOf(invite.token).pub, stored.pub, '公钥在邀请函里，对方才验得了签')
+  assert.ok(!invite.token.includes(stored.priv), '私钥绝不能出现在 token 里')
+  assert.ok(!invite.url.includes(stored.priv))
 
   // 串门记录：一行 invite
   const log = readVisitLog({ root })
@@ -148,6 +180,9 @@ test('makeInvite：token / url / exp 都对，密钥与串门记录落在 .agent
   assert.equal(log.entries[0].event, 'invite')
   assert.equal(log.entries[0].visitId, invite.id)
   assert.equal(log.entries[0].guest, '阿甲')
+
+  // 同一台机器再发一张，身份（kid）不变——这样对方才认得出「还是那个人」
+  assert.equal(makeInvite({ profile: store, now: () => FIXED }).kid, invite.kid)
 })
 
 test('隐私边界：token 里只有名片，signals / persona / stats 一个都不出门', () => {
@@ -156,7 +191,13 @@ test('隐私边界：token 里只有名片，signals / persona / stats 一个都
   const invite = makeInvite({ profile: store, now: () => FIXED })
   const payload = payloadOf(invite.token)
 
-  assert.deepEqual(Object.keys(payload).sort(), ['exp', 'from', 'iat', 'id', 'kind', 'scope', 'sid', 'v'])
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ['alg', 'exp', 'from', 'iat', 'id', 'kid', 'kind', 'pub', 'scope', 'v'],
+    'v2 邀请函：名片 + 时间 + 公钥 + kid，就这些',
+  )
+  assert.equal(payload.v, 2)
+  assert.equal(payload.alg, 'ed25519')
   const dumped = JSON.stringify(payload)
   for (const secretish of ['D:/secret/project', '机密', '苍鹭', 'signals', 'persona', 'stats', 'traits', 'seen', 'days']) {
     assert.ok(!dumped.includes(secretish), `token 里不该出现 ${secretish}`)
@@ -256,35 +297,52 @@ test('篡改过的邀请函：签名对不上就拒，坏 scope / 坏版本 / �
   assert.equal(tampered.code, 'bad_signature')
   assert.match(tampered.reason, /签名/)
 
+  // 名片的每一个字段都被签名罩着：改一个字也过不去
+  const editedName = tamperToken(invite.token, (payload) => {
+    payload.from.name = '冒充的'
+    return payload
+  })
+  assert.equal(readInviteToken(editedName, { now: () => FIXED, root }).code, 'bad_signature')
+
+  const mine = newKeypair()
   const basePayload = {
-    v: 1,
+    v: 2,
     kind: 'invite',
     id: 'visit_x',
     from: { name: '阿甲', petSkin: 'basic', habitsTop3: [], capabilities: [] },
     scope: 'visit',
     iat: FIXED_MS,
     exp: FIXED_MS + DAY,
-    sid: payloadOf(invite.token).sid,
+    alg: 'ed25519',
+    pub: mine.pub,
+    kid: 'kid_000000000000',
   }
-  const badScope = readInviteToken(forgeToken(root, { ...basePayload, scope: 'party' }), { now: () => FIXED, root })
+  const forge = (patch) => forgeV2Token({ ...basePayload, ...patch }, { priv: mine.priv })
+
+  const badScope = readInviteToken(forge({ scope: 'party' }), { now: () => FIXED, root })
   assert.equal(badScope.ok, false)
   assert.equal(badScope.code, 'bad_scope')
 
-  const badVersion = readInviteToken(forgeToken(root, { ...basePayload, v: 2 }), { now: () => FIXED, root })
+  const badVersion = readInviteToken(forge({ v: 3 }), { now: () => FIXED, root })
   assert.equal(badVersion.ok, false)
   assert.equal(badVersion.code, 'bad_version')
 
-  const badKind = readInviteToken(forgeToken(root, { ...basePayload, kind: 'note' }), { now: () => FIXED, root })
+  const badKind = readInviteToken(forge({ kind: 'note' }), { now: () => FIXED, root })
   assert.equal(badKind.ok, false)
   assert.equal(badKind.code, 'bad_kind')
 
-  const noCard = readInviteToken(forgeToken(root, { ...basePayload, from: {} }), { now: () => FIXED, root })
+  const noCard = readInviteToken(forge({ from: {} }), { now: () => FIXED, root })
   assert.equal(noCard.ok, false)
   assert.equal(noCard.code, 'no_card')
 
-  const noExp = readInviteToken(forgeToken(root, { ...basePayload, exp: 'soon' }), { now: () => FIXED, root })
+  const noExp = readInviteToken(forge({ exp: 'soon' }), { now: () => FIXED, root })
   assert.equal(noExp.ok, false)
   assert.equal(noExp.code, 'no_exp')
+
+  // v2 却不带公钥：验不了签就别放行
+  const noPub = readInviteToken(forge({ pub: '' }), { now: () => FIXED, root })
+  assert.equal(noPub.ok, false)
+  assert.equal(noPub.code, 'no_pub')
 
   for (const junk of ['', 'abc', 'a.b', '!!!.???', null, 42]) {
     const bad = readInviteToken(junk, { now: () => FIXED, root })
@@ -293,7 +351,25 @@ test('篡改过的邀请函：签名对不上就拒，坏 scope / 坏版本 / �
   }
 })
 
-test('跨机器的邀请：验不了签就如实说 verified:false，但仍然收得下（提示本地校验）', () => {
+test('别人的公钥配别人签的体：验得过，但 kid 对不上——身份绑定不装作有', () => {
+  const root = tempRoot('identity')
+  const store = richStore(root)
+  const invite = makeInvite({ profile: store, now: () => FIXED })
+  const realKid = invite.kid
+
+  // 攻击者：拿自己的密钥，签一张写着「阿甲」名片的邀请函
+  const attacker = newKeypair()
+  const payload = payloadOf(invite.token)
+  const forged = forgeV2Token({ ...payload, pub: attacker.pub }, { priv: attacker.priv })
+  const parsed = readInviteToken(forged, { now: () => FIXED, root })
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.verified, true, '签名本身是真的——它确实是攻击者那把私钥签的')
+  assert.notEqual(parsed.kid, realKid, '但 kid 变了：能看出「不是原来那个人发的」')
+  assert.match(parsed.verifyNote, /签名有效/)
+  assert.equal(parsed.sameMachine, false)
+})
+
+test('跨机器的邀请：公钥在邀请函里，所以在客人机器上也能真验签', () => {
   const hostRoot = tempRoot('cross-host')
   const guestRoot = tempRoot('cross-guest')
   const host = richStore(hostRoot, '阿甲')
@@ -302,13 +378,75 @@ test('跨机器的邀请：验不了签就如实说 verified:false，但仍然�
   const invite = makeInvite({ profile: host, now: () => FIXED })
   const accepted = acceptInvite({ token: invite.token, profile: guest, root: guestRoot, now: () => FIXED })
   assert.equal(accepted.ok, true)
-  assert.equal(accepted.verified, false)
-  assert.match(accepted.verifyNote, /跨机器/)
+  assert.equal(accepted.verified, true, '客人机器上没有主人的任何密钥，却验得过——公钥就在邀请函里')
+  assert.equal(accepted.sameMachine, false)
+  assert.match(accepted.verifyNote, /签名有效/)
+  assert.equal(accepted.kid, invite.kid)
   assert.equal(accepted.hostCard.name, '阿甲')
   assert.equal(accepted.myCard.name, '阿乙')
   // 两边各自留了自己的记录
   assert.deepEqual(readVisitLog({ root: hostRoot }).entries.map((entry) => entry.event), ['invite'])
   assert.deepEqual(readVisitLog({ root: guestRoot }).entries.map((entry) => entry.event), ['accept'])
+  assert.equal(readVisitLog({ root: guestRoot }).entries[0].verified, true)
+
+  // 跨机器也一样挡得住改过的东西：改一个字，客人这边直接拒
+  const edited = tamperToken(invite.token, (payload) => {
+    payload.from.name = '冒充的'
+    return payload
+  })
+  const rejected = acceptInvite({ token: edited, profile: guest, root: guestRoot, now: () => FIXED })
+  assert.equal(rejected.ok, false)
+  assert.equal(rejected.code, 'bad_signature')
+  // 拒了就不该留 record
+  assert.deepEqual(readVisitLog({ root: guestRoot }).entries.map((entry) => entry.event), ['accept'])
+})
+
+test('v1 老邀请函仍然读得懂：本机发的照样验签，跨机器的照实说没验签', () => {
+  const hostRoot = tempRoot('legacy-host')
+  const guestRoot = tempRoot('legacy-guest')
+  const host = richStore(hostRoot, '阿甲')
+  const guest = richStore(guestRoot, '阿乙')
+  const card = makeInvite({ profile: host, now: () => FIXED }).card
+
+  // 1.6.4 新发的都是 v2，不再写 HMAC 密钥文件
+  const secretPath = path.join(hostRoot, '.agentdeck', 'pet', VISIT_SECRET_FILE)
+  assert.equal(fs.existsSync(secretPath), false, '新版本不再生成 HMAC 密钥')
+
+  const v1Payload = {
+    v: 1,
+    kind: 'invite',
+    id: 'visit_legacy0001',
+    from: card,
+    scope: 'visit',
+    iat: FIXED_MS,
+    exp: FIXED_MS + DAY,
+    sid: '',
+  }
+
+  // 本机：读旧令牌时按需补一份 HMAC 密钥，sid 对得上才验
+  assert.equal(readInviteToken(forgeToken(hostRoot, { ...v1Payload, sid: 'nope' }, { secret: '0123' }), { now: () => FIXED, root: hostRoot }).verified, false)
+  const secret = secretOf(hostRoot)
+  const sidLocal = createHash('sha256').update(secret).digest('hex').slice(0, 8)
+  const legacyLocal = forgeToken(hostRoot, { ...v1Payload, sid: sidLocal }, { secret })
+  const parsedLocal = readInviteToken(legacyLocal, { now: () => FIXED, root: hostRoot })
+  assert.equal(parsedLocal.ok, true)
+  assert.equal(parsedLocal.version, 1)
+  assert.equal(parsedLocal.verified, true)
+  assert.equal(parsedLocal.sameMachine, true)
+  assert.match(parsedLocal.verifyNote, /本机签发/)
+
+  // 改过就拒（v1 的老路也没破）
+  const badLegacy = tamperToken(legacyLocal, (payload) => {
+    payload.scope = 'work'
+    return payload
+  })
+  assert.equal(readInviteToken(badLegacy, { now: () => FIXED, root: hostRoot }).code, 'bad_signature')
+
+  // 跨机器：客人没有主人的 HMAC 密钥，收得下但如实说没验签
+  const accepted = acceptInvite({ token: legacyLocal, profile: guest, root: guestRoot, now: () => FIXED })
+  assert.equal(accepted.ok, true)
+  assert.equal(accepted.verified, false)
+  assert.match(accepted.verifyNote, /跨机器/)
 })
 
 test('握手：带 reply 的邀请会走注入的 http；成功换回名片，失败也不把整次串门搞砸', () => {
@@ -467,13 +605,16 @@ test('没有工作区路径也能串门（密钥退化为进程内临时），�
   const profile = richStore(tempRoot('noroot'))
   const invite = makeInvite({ profile: { ...profile.get() }, now: () => FIXED })
   assert.equal(invite.ok, true)
-  assert.equal(invite.secretPath, null)
-  assert.equal(invite.ephemeralSecret, true)
+  assert.equal(invite.keyPath, null)
+  assert.equal(invite.ephemeralKey, true)
   assert.equal(invite.logged, false)
 
   const accepted = acceptInvite({ token: invite.token, profile: { ...profile.get() }, now: () => FIXED })
   assert.equal(accepted.ok, true)
   assert.equal(accepted.logged, false)
+  // 临时密钥也是真密钥：公钥照样在邀请函里，收的一方照样验得过
+  assert.equal(accepted.verified, true)
+  assert.equal(accepted.kid, invite.kid)
 
   assert.deepEqual(readVisitLog({ root: null }), { ok: false, reason: '需要工作区路径', entries: [] })
   assert.deepEqual(readVisitLog({ root: tempRoot('empty-log') }).entries, [])
@@ -631,4 +772,53 @@ test('petTools：pet_skin 列皮肤 / 换装 / 五状态 / 出图，付费皮肤
   const rendered = await tool.execute({ action: 'render', id: '霓虹', state: 'working', size: 48 })
   assert.match(rendered.text, /<svg/)
   assert.match((await tool.execute({ action: 'render', id: '没这套' })).text, /没有这套皮肤/)
+})
+
+test('pet_skin：授权跟人走——工作室档装在机级目录，工作区没有，付费皮肤照样换得上', async () => {
+  const { encodeLicense, writeLicenseKey } = await import('../lib/license.js')
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+  const pubB64 = publicKey.export({ type: 'spki', format: 'der' }).toString('base64url')
+  const machineRoot = path.join(tempRoot('machine'), 'agentdeck-super')
+  const root = tempRoot('tool-skin-machine')
+  richStore(root)
+
+  // 机级目录（$DSH_HOME/agentdeck-super）里放一张工作室档：studio 自带付费皮肤全解锁
+  const nowSec = Math.floor(FIXED_MS / 1000)
+  const key = encodeLicense(
+    {
+      v: 1,
+      id: 'lic_pet_skin',
+      tier: 'studio',
+      sub: '测试',
+      iat: nowSec,
+      exp: nowSec + 30 * 86400,
+      seats: 5,
+      skins: [],
+    },
+    privateKey.export({ type: 'pkcs8', format: 'pem' }),
+  )
+  const wrote = writeLicenseKey(machineRoot, key)
+  assert.equal(wrote.ok, true, wrote.reason)
+
+  const old = process.env.AGENTDECK_LICENSE_PUBKEY
+  process.env.AGENTDECK_LICENSE_PUBKEY = pubB64
+  try {
+    // 1) 只给工作区 root：看不见机级授权 → 付费皮肤明确拒绝并报价（不偷偷换皮）
+    const blind = petTools({ root, now: () => FIXED }).find((item) => item.name === 'pet_skin')
+    const denied = await blind.execute({ action: 'activate', id: 'premium-aurora' })
+    assert.match(denied.text, /没换成/)
+    assert.match(denied.text, /¥18/)
+
+    // 2) 宿主把机级目录传进来（deps.licenseRoot）：同一张授权立刻生效
+    const tool = petTools({ root, licenseRoot: () => machineRoot, now: () => FIXED }).find((item) => item.name === 'pet_skin')
+    const listed = await tool.execute({ action: 'list' })
+    assert.doesNotMatch(listed.text, /未解锁/)
+    assert.match((await tool.execute({ action: 'activate', id: 'premium-aurora' })).text, /已经换上/)
+    const saved = JSON.parse(fs.readFileSync(path.join(root, '.agentdeck', 'pet', 'profile.json'), 'utf8'))
+    assert.equal(saved.skins.active, 'premium-aurora')
+    assert.match((await tool.execute({ action: 'render', id: 'premium-aurora', state: 'working', size: 64 })).text, /<svg/)
+  } finally {
+    if (old === undefined) delete process.env.AGENTDECK_LICENSE_PUBKEY
+    else process.env.AGENTDECK_LICENSE_PUBKEY = old
+  }
 })

@@ -8,7 +8,7 @@
 
 | transport | 面向什么 | 实测到哪一步 | 证据 |
 |---|---|---|---|
-| `cli` | 本机命令行 Agent（claude / codex / dsh / gemini / 自定义） | **真机跑通 3/4**：claude / codex / dsh 真跑回 `AGENTDECK_OK`；gemini 本机缺 API Key（退出码 41，属配置问题，不是接入层） | 第 2 节原始输出 + `docs/evidence/real-agents-2026-11-05T06-02-34-575Z.md` |
+| `cli` | 本机命令行 Agent（claude / codex / dsh / gemini / 自定义） | **真机跑通 3/4**：claude / codex / dsh 真跑回 `AGENTDECK_OK`；gemini 本机缺 API Key（退出码 41，属配置问题，不是接入层） | 第 2 节原始输出 + `docs/evidence/real-agents-2026-11-05T07-06-12-094Z.md` |
 | `openai` | 任何 OpenAI 兼容服务（官方、中转、本地 vLLM/Ollama） | 假服务端全程验证（探活 / 调用 / 流式 / 401 / 用量） | `tests/bridge.test.mjs` |
 | `acp-http` | 支持 ACP over HTTP 的 Agent 网关（CodeBuddy 一类） | 假 ACP 网关验证（connect → initialize → session/new → session/prompt） | `tests/bridge.test.mjs` |
 | `cdp` | 只有网页版的桌面 App（ChatGPT / Claude 桌面端等） | 假调试端口 + 假 WebSocket 验证（注入输入、回车、等回答） | `tests/bridge.test.mjs` |
@@ -62,7 +62,7 @@ PROBE dead  ={"ok":false,"kind":"openai","error":"连接被拒绝：端口没开
 node tools/real-agents-check.mjs --timeout 300   # 每家用真模型问一句"只回 AGENTDECK_OK + 你的名字"
 ```
 
-本机结果（`docs/evidence/real-agents-2026-11-05T06-02-34-575Z.md`）：
+本机结果（`docs/evidence/real-agents-2026-11-05T07-06-12-094Z.md`）：
 
 | Agent | 结果 | 耗时 | 退出码 | 实际命令行 |
 | --- | --- | --- | --- | --- |

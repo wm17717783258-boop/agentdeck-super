@@ -1,0 +1,209 @@
+# 桌宠串门 + 皮肤：两台互不相干的 Hub 真往返（1.6.4）
+
+- 时间：2026-11-05T09:59:33.796Z
+- 版本：agentdeck-super@1.6.4
+- 小犀（A）：工作区 D:\demo\visit\hostA\work，任务板 D:\demo\visit\hostA\board，授权：本机工作室版
+- 小鹿（B）：工作区 D:\demo\visit\hostB\work，任务板 D:\demo\visit\hostB\board，授权：本机工作室版
+- 说明：两个 Hub 各自一份任务板 / 桌宠档案 / 授权目录，除了显式传过去的邀请函和便签 JSON，互相看不见对方的东西。
+
+## 1) 小犀亮名片（只给名片，不给原始记录）
+```text
+【pet_visit 我的名片】小犀
+皮肤：basic
+拿手习惯：还没养成习惯
+能帮忙：聊天、记笔记
+
+把这张名片给朋友看就够了——它不含任何原始记录。
+```
+
+## 2) 小犀先建一个组（求助便签要落到这个组）
+```text
+【team_board】已创建小组 team_df514e12b5（串门演示）
+目标：验证串门与求助便签能落成任务
+成员：小犀
+下一步：用 {"action":"add","teamId":"team_df514e12b5","title":"…","acceptance":"…"} 落任务，或用 team_orchestrate 直接开跑。
+```
+
+## 3) 小犀发邀请函（scope=work，24 小时有效）
+```text
+【pet_visit】邀请函好了（可以派活，2026-11-06 17:59 前有效）
+dsh://agentdeck/visit?t=<邀请令牌已脱敏，长度 332>
+
+把上面这条链接发给朋友，对方在自己的会话里用 pet_visit accept 收下即可。
+想自动换名片的话，可以用 reply 参数给一个 http 回执地址。
+```
+- 取到 token：已脱敏（332 字符，未写入证据）
+
+## 4) 小鹿收下邀请（校验签名 / 有效期 / 范围）
+```text
+【pet_visit 主人的名片】小犀
+皮肤：basic
+拿手习惯：还没养成习惯
+能帮忙：聊天、记笔记
+
+签名：跨机器的邀请只能在本地做格式校验
+握手：这次没联网，名片靠你自己转给对方
+有效期到：2026-11-06 17:59
+已记进串门记录（.agentdeck/pet/visits.log）
+```
+
+## 5) 小鹿建自己的组（收便签用）
+```text
+【team_board】已创建小组 team_f1974a1c44（小鹿的组）
+目标：（未填写，建议补 goal 便于之后找回上下文）
+成员：小鹿
+下一步：用 {"action":"add","teamId":"team_f1974a1c44","title":"…","acceptance":"…"} 落任务，或用 team_orchestrate 直接开跑。
+```
+
+## 6) 小犀送出一张礼物便签（含一套付费皮肤）
+```text
+【pet_visit】礼物便签好了，把下面这段 JSON 复制给对方，让对方用 pet_visit receive 收下：
+```json
+{
+  "v": 1,
+  "kind": "gift",
+  "id": "note_94c09a8689",
+  "from": {
+    "name": "小犀",
+    "petSkin": "basic",
+    "habitsTop3": [],
+    "capabilities": [
+      "聊天",
+      "记笔记"
+    ]
+  },
+  "at": "2026-11-05T09:59:33.876Z",
+  "payload": {
+    "message": "这套极光皮肤送你，夜里写代码好看",
+    "skin": "premium-aurora"
+  },
+  "to": "小鹿"
+}
+```
+```
+
+## 7) 小鹿收下礼物
+```text
+【pet_visit】收下了 小犀 的礼物，已记一条事件。
+```
+
+## 8) 小鹿回一张求助便签
+```text
+【pet_visit】求助便签好了，把下面这段 JSON 复制给对方，让对方用 pet_visit receive 收下（会落成一条任务）：
+```json
+{
+  "v": 1,
+  "kind": "ask",
+  "id": "note_8304cb6a30",
+  "from": {
+    "name": "小鹿",
+    "petSkin": "basic",
+    "habitsTop3": [],
+    "capabilities": [
+      "聊天",
+      "记笔记"
+    ]
+  },
+  "at": "2026-11-05T09:59:33.892Z",
+  "payload": {
+    "title": "帮我把周报 SQL 里的时间窗改成按自然周",
+    "acceptance": "给出改完的 SQL 和一句为什么",
+    "role": "worker",
+    "note": ""
+  },
+  "to": "小犀"
+}
+```
+```
+
+## 9) 小犀收下求助，便签落成本机任务
+```text
+【pet_visit】收下了 小鹿 的求助，已落成任务 task_6f6198c998（队：team_df514e12b5）。
+```
+
+## 10) 小犀的任务板里真多了一条（来自小鹿）
+```text
+【team_board】小组 team_df514e12b5 任务（1 条）
+
+· task_6f6198c998 [pending] 帮我把周报 SQL 里的时间窗改成按自然周  角色:worker
+    验收：给出改完的 SQL 和一句为什么
+
+进度：完成 0/1
+```
+
+## 11) 两边的串门记录（各自落盘 .agentdeck/pet/visits.log）
+```text
+【pet_visit】最近的串门记录
+· 2026-11-05 17:59 invite 小犀
+· 2026-11-05 17:59 note-out —
+· 2026-11-05 17:59 note-in 小鹿
+```
+
+```text
+【pet_visit】最近的串门记录
+· 2026-11-05 17:59 accept 小犀（跨机器）
+· 2026-11-05 17:59 note-in 小犀
+· 2026-11-05 17:59 note-out —
+```
+
+## 12) 皮肤：列出来（含付费那套）、换装、四种状态真渲染
+```text
+【pet_skin】共 4 套皮肤（当前：basic）
+1. 原味（basic）免费 · 已启用
+2. 霓虹（nio）免费
+3. 水墨（ink）免费
+4. 极光（premium-aurora）¥18
+用法：pet_skin activate id=霓虹 换皮肤；pet_skin states 看五种状态。
+```
+
+```text
+【pet_skin】已经换上「极光」。
+```
+
+```text
+【pet_skin】桌宠的五种状态
+· idle：发呆中
+· working：搬砖中
+· meeting：开会中
+· visiting：串门中
+· sleeping：睡着了
+```
+
+### 极光 / idle
+```text
+（SVG 7554 字节，见 docs/evidence/pet-skins-1.6.4.html）
+```
+### 极光 / working
+```text
+（SVG 7557 字节，见 docs/evidence/pet-skins-1.6.4.html）
+```
+### 极光 / meeting
+```text
+（SVG 7557 字节，见 docs/evidence/pet-skins-1.6.4.html）
+```
+### 极光 / visiting
+```text
+（SVG 7558 字节，见 docs/evidence/pet-skins-1.6.4.html）
+```
+### 极光 / sleeping
+```text
+（SVG 7558 字节，见 docs/evidence/pet-skins-1.6.4.html）
+```
+
+画廊已写出：docs/evidence/pet-skins-1.6.4.html（5/5 套状态有 SVG）
+## 13) 没有授权的那台机器换付费皮肤——被明确拒绝，不偷偷降级
+```text
+【pet_skin】没换成：这个皮肤需要授权：¥18（这套是付费皮肤，需要 studio 档或单独购买）
+```
+
+```text
+【deck_license】当前档位：免费版
+授权状态：还没有授权码（免费版可用）
+到期：长期 / 未设置
+席位上限：3
+权益：免费版：本地房间 1、云房间 0、席位 3、并行 1、仅本机
+授权文件：D:\demo\visit\hostC\lic\.agentdeck\license\key.txt（跟人走：换项目目录不用重新激活）
+一句话：免费版已够单机全功能使用；需要多台机器一起干活时再升级（协作版起有云房间）。
+要跨机协作：先 deck_license plans 看价格，付款后 deck_license activate 粘贴授权码。
+```
+

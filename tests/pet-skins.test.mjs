@@ -312,6 +312,21 @@ test('renderSprite 付费未授权给占位图 + 中文购买提示；授权后�
   assertBalancedSvg(unlocked)
 })
 
+test('renderSprite 用字符串 id 也能认出包内付费皮肤（不会被当成"没有这个皮肤"）', () => {
+  // 页面通常先 listSkins 再逐张 renderSprite；但 hero 区只传了 pet.skin 这个字符串。
+  // 如果 renderSprite 只查 BUILTIN_SKINS，付费皮肤就会被画成「素材缺失 / 没有这个皮肤」。
+  const byId = renderSprite({ skin: 'premium-aurora', state: 'idle', size: 96 })
+  assert.ok(!byId.includes('没有这个皮肤'), '包内付费皮肤必须认得出来')
+  assert.ok(byId.includes('此皮肤需授权 ¥18'), '未授权时应该说"需授权"，而不是"不存在"')
+  assert.match(byId, /data-placeholder="true"/)
+  assertBalancedSvg(byId)
+
+  const unlocked = renderSprite({ skin: 'premium-aurora', state: 'idle', size: 96, license: perSkinLicense(['premium-aurora']), now: FIXED })
+  assert.ok(!unlocked.includes('data-placeholder'), '授权后字符串 id 也要渲染真素材')
+  assert.match(unlocked, /data-skin="premium-aurora"/)
+  assertBalancedSvg(unlocked)
+})
+
 test('renderSprite 素材缺失/皮肤不存在：返回占位 SVG，绝不抛、绝不返回空串', () => {
   const missing = renderSprite({ skin: { id: 'ghost', name: '缺', file: 'ghost.svg', dir: 'ghost', price: 0 }, state: 'working' })
   assert.match(missing, /^<svg /)

@@ -1,7 +1,7 @@
 {
   "name": "agentdeck-super",
-  "version": "1.4.1",
-  "description": "超级 Agent + 任意 Agent 小组协作：一个会自己干活的 Agent，还能把本机 CLI、ACP、OpenAI 兼容、桌面 App、自研桥接的任意 Agent 编成一个小组，分工并行交付一个真实项目。",
+  "version": "1.9.0",
+  "description": "Nexi 灵犀：超级 Agent + 任意 Agent 小组协作 + MCP 网关。一个会自己干活的 Agent，能把本机 CLI、ACP、OpenAI 兼容、桌面 App、自研桥接的任意 Agent 编成小组，并用一条命令把同一套能力接进 Claude/Cursor/Codex 等宿主。",
   "type": "module",
   "main": "lib/index.js",
   "icon": "assets/logo.png",
@@ -9,10 +9,14 @@
     ".": "./lib/index.js",
     "./engine/*": "./lib/engine/*",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./hub": "./lib/hub.js",
+    "./mcp": "./lib/mcp/server.js",
+    "./connect/*": "./lib/connect/*"
   },
   "files": [
     "lib",
+    "bin",
     "tools",
     "assets",
     "docs",
@@ -27,7 +31,15 @@
     "smoke": "node tests/e2e-local.mjs",
     "relay": "node tools/relay-server.mjs --port 8787",
     "license": "node tools/license-cli.mjs",
-    "publish:check": "node tools/publish-npm.mjs"
+    "publish:check": "node tools/publish-npm.mjs",
+    "verify:passport": "node tools/verify-passport.mjs --pkg .",
+    "verify:readonly": "node tools/verify-readonly.mjs",
+    "verify:recovery": "node tools/verify-recovery.mjs --pkg .",
+    "verify:console": "node tools/verify-console.mjs --pkg .",
+    "verify:mcp-http": "node tools/verify-mcp-http.mjs",
+    "verify:pay": "node tools/verify-pay.mjs",
+    "verify:security": "node tools/verify-security.mjs",
+    "verify:all": "node tools/verify-all.mjs"
   },
   "keywords": [
     "dsh",
@@ -74,5 +86,8 @@
   "homepage": "https://github.com/wm17717783258-boop/agentdeck-super#readme",
   "bugs": {
     "url": "https://github.com/wm17717783258-boop/agentdeck-super/issues"
+  },
+  "bin": {
+    "nexi": "bin/nexi.mjs"
   }
 }

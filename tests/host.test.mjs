@@ -172,6 +172,11 @@ async function call(handler, { method = 'GET', url = '/deck', headers = {}, body
   return res;
 }
 
+/** 有些页面渲染是 async（比如 /visit 要动态 import 串门模块）：等一拍再断言。 */
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 function jsonOf(res) {
   try {
     return JSON.parse(res.body);
@@ -200,6 +205,8 @@ test('apply() 把九件工具都注册进宿主工具带', async () => {
       'super_agent', 'team_orchestrate', 'agent_join', 'team_board',
       'deck_license', 'deck_room',
       'pet_visit', 'pet_meeting', 'pet_skin',
+      // 1.7 M4：跨厂商会议 + 定时/审批/全局停止
+      'deck_meeting', 'deck_automation',
     ];
     for (const want of expected) assert.ok(names.includes(want), `缺工具 ${want}（实际：${names.join('、')}）`);
     assert.equal(new Set(names).size, names.length, '工具名不能重复');
@@ -259,12 +266,55 @@ test('工具名字进了系统提示词以外的所有地方都一致：register
 
 /* ── 3. 路由注册 ───────────────────────────────────────────────────────── */
 
-test('默认挂两个路由：/adbp 前缀 + /deck 精确', async () => {
+test('默认挂五个路由：/adbp 前缀 + /deck 精确 + /deck/console 测试台 + /deck/act 主页动作 + /visit 串门落地页', async () => {
   const b = await boot();
   try {
     assert.ok(routeFor(b.state, 'prefix', '/adbp'), '缺 ADBP 前缀路由');
     assert.ok(routeFor(b.state, 'exact', '/deck'), '缺 /deck 状态页路由');
-    assert.equal(b.state.routes.length, 2, `路由多了：${b.state.routes.map((r) => `${r.kind}:${r.path}`).join(',')}`);
+    // 测试台必须单独挂：/deck 是 exact，/deck/console 到不了它的 handler（踩过这个坑）
+    assert.ok(routeFor(b.state, 'exact', '/deck/console'), '缺 /deck/console 测试台路由');
+    // 主页上的按钮也是 POST 到独立路径，同样到不了 /deck 的 handler
+    assert.ok(routeFor(b.state, 'exact', '/deck/act'), '缺 /deck/act 主页动作路由');
+    assert.ok(routeFor(b.state, 'prefix', '/visit'), '缺 /visit 串门落地页路由');
+    assert.equal(b.state.routes.length, 5, `路由多了：${b.state.routes.map((r) => `${r.kind}:${r.path}`).join(',')}`);
+  } finally {
+    b.cleanup();
+  }
+});
+
+test('/visit 落地页：拿真邀请函渲染出主人名片；坏链接不 500', async () => {
+  const b = await boot();
+  try {
+    const handler = routeFor(b.state, 'prefix', '/visit').handler;
+    // 1) 没带 token：给一句人话，不是 500
+    const bare = await call(handler, { url: '/visit' });
+    await settle();
+    assert.equal(bare.statusCode, 200);
+    assert.match(String(bare.body || ''), /串门邀请函/);
+    // 2) 真邀请函：页面里能看到主人名字 + 有效期
+    const { makeInvite } = await import('../lib/pet/visit.js');
+    const { createProfileStore } = await import('../lib/pet/profile.js');
+    const root = mkdtempSync(join(tmpdir(), 'adsk-visit-'));
+    try {
+      const store = createProfileStore({ root });
+      store.update((draft) => { draft.name = '小犀'; });
+      const invite = makeInvite({ profile: store, root, ttlMs: 60 * 60 * 1000 });
+      assert.equal(invite.ok, true, invite.reason);
+      const res = await call(handler, { url: `/visit?t=${encodeURIComponent(invite.token)}` });
+      await settle();
+      assert.equal(res.statusCode, 200);
+      const html = String(res.body || '');
+      assert.match(html, /小犀/, '页面里没出现主人名字');
+      assert.match(html, /可以给我派活|只串门/, '页面里没写串门范围');
+      assert.match(html, /pet_visit accept/, '页面里没给"没装 DSH 怎么收"的指令');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+    // 3) 乱填 token：照样 200 人话页
+    const junk = await call(handler, { url: '/visit?t=not-a-real-token' });
+    await settle();
+    assert.equal(junk.statusCode, 200);
+    assert.match(String(junk.body || ''), /串门邀请函|邀请已经过期|邀请你去串门/);
   } finally {
     b.cleanup();
   }
@@ -368,9 +418,154 @@ test('/deck 状态页：非 GET 方法给人话，不 500', async () => {
   }
 });
 
-/* ── 6. 授权激活：整条链路（HTTP → 验签 → 落盘 → 页面/工具生效）───────────── */
+test('桌宠学习惯：任务板上加/完成三次同类活，档案里长出习惯，/deck 与 pet_summary 都看得见', async () => {
+  // 这条验的是宿主接线（v1.4.7 起）：emit 出口把真实活动翻译给 profile.observe，
+  // 不再需要演示脚本手动喂事件。跑通 = 「数字分身自己会学」不是嘴上说说。
+  const root = mkdtempSync(join(tmpdir(), 'adsk-host-habit-'));
+  const b = await boot({ petRoot: root });
+  try {
+    const board = b.state.tools.find((t) => t.name === 'team_board');
+    assert.ok(board, '缺 team_board 工具');
+    const created = await board.execute({ action: 'create', name: '习惯回归组', goal: '让桌宠学三次同类活' }, {});
+    const teamId =
+      created?.teamId ||
+      created?.team?.id ||
+      (String(created?.text || '').match(/team_[0-9a-z]{6,}/i) || [])[0];
+    assert.ok(teamId, `建组没返回 teamId：${JSON.stringify(created).slice(0, 200)}`);
 
-test('POST /adbp/deck/license：GET 拒、空码拒、垃圾码拒且不落盘', async () => {
+    for (let i = 1; i <= 3; i += 1) {
+      const added = await board.execute({ action: 'add', teamId, title: `修 sql 连接池（第 ${i} 次）`, acceptance: '跑通', role: 'worker' }, {});
+      const taskId = (String(added?.text || '').match(/task_[0-9a-z]{6,}/i) || [])[0];
+      assert.ok(taskId, `加任务没返回 taskId：${JSON.stringify(added).slice(0, 200)}`);
+      await board.execute({ action: 'done', teamId, taskId, output: '改完了' }, {});
+    }
+
+    const profileFile = join(root, '.agentdeck', 'pet', 'profile.json');
+    assert.ok(existsSync(profileFile), `桌宠档案没落盘：${profileFile}`);
+    const profile = JSON.parse(readFileSync(profileFile, 'utf8'));
+    assert.equal(profile.stats.tasksAdded, 3, '拆任务计数应为 3');
+    assert.equal(profile.stats.tasksDone, 3, '完成任务计数应为 3');
+    assert.ok(Array.isArray(profile.habits) && profile.habits.length >= 1, '三次同类活应长出至少一条习惯');
+    assert.ok(profile.habits.some((h) => /sql/.test(String(h.label))), `习惯标签应带 sql：${JSON.stringify(profile.habits).slice(0, 240)}`);
+
+    const visit = b.state.tools.find((t) => t.name === 'pet_visit');
+    assert.ok(visit, '缺 pet_visit 工具');
+    const card = await visit.execute({ action: 'card' }, {});
+    const cardText = JSON.stringify(card);
+    assert.match(cardText, /sql/, '名片应把学到的习惯带出去');
+
+    const res = await call(routeFor(b.state, 'exact', '/deck').handler, { url: '/deck' });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /拆出 3 个/, '/deck 应展示拆任务数');
+    assert.match(res.body, /完成任务/, '/deck 应展示学到的习惯');
+    assert.match(res.body, /只存本机/, '/deck 应说明习惯只存本机');
+  } finally {
+    b.cleanup();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('回归：任务板上有任务（标题还很长）时，/deck 与 /adbp 状态页照样 200 不报错', async () => {
+  // 曾经的坑：状态页在渲染任务列表时调了一个没定义的 clipText，实机一有任务就 500。
+  // 上面的用例都在空板上跑，永远走不到那条分支 —— 这条专门把那条分支逼出来。
+  const b = await boot();
+  try {
+    const board = b.state.tools.find((t) => t.name === 'team_board');
+    assert.ok(board, '缺 team_board 工具');
+    const created = await board.execute({ action: 'create', name: '状态页回归组', goal: '把渲染路径跑一遍' }, {});
+    const teamId =
+      created?.teamId ||
+      created?.team?.id ||
+      (Array.isArray(created?.teams) ? created.teams.at(-1)?.id : null) ||
+      (String(created?.text || '').match(/team_[0-9a-z]{6,}/i) || [])[0];
+    assert.ok(teamId, `建组没返回 teamId：${JSON.stringify(created).slice(0, 200)}`);
+
+    const longTitle = '这是一条特别特别长的中文任务标题用来把状态页的截断逻辑逼出来看看它到底会不会把整页搞崩';
+    const added = await board.execute({ action: 'add', teamId, title: longTitle, acceptance: '页面不 500', role: 'worker' }, {});
+    assert.ok(added && typeof added.text === 'string' && added.text.length > 0, '加任务没返回 text');
+
+    for (const [kind, path] of [['exact', '/deck'], ['prefix', '/adbp']]) {
+      const route = routeFor(b.state, kind, path);
+      assert.ok(route, `没挂路由 ${path}`);
+      const res = await call(route.handler, { url: path });
+      assert.equal(res.statusCode, 200, `${path} 应 200，实际 ${res.statusCode}：${String(res.body).slice(0, 200)}`);
+      assert.ok(
+        !/渲染失败|ReferenceError|is not defined|internal_error/i.test(res.body),
+        `${path} 渲染报错：${String(res.body).slice(0, 240)}`,
+      );
+      if (path === '/deck') {
+        assert.ok(res.body.includes('这是一条特别特别长'), '/deck 没把任务标题写出来');
+        assert.ok(res.body.includes('…'), '/deck 没对长标题做截断');
+        assert.ok(res.body.includes('待办'), '/deck 的任务状态应是中文标签');
+        // 桌宠要画真皮肤，不能塞占位图糊弄人
+        assert.ok(!/aria-label="桌宠占位图"/.test(res.body), '/deck 还在用占位图，没用真皮肤');
+        assert.match(res.body, /data-skin="basic"/, '/deck 的桌宠应渲染激活皮肤');
+      }
+    }
+  } finally {
+    b.cleanup();
+  }
+});
+
+test('回归：配置里填了 cloud.relayUrl，/deck 必须认（曾被 normalizeConfig 悄悄吃掉）', async () => {
+  // 实机踩过的坑：schema 放行 cloud、normalizeConfig 只挑认识的字段 → relay 地址被丢掉，
+  // 用户填了自建 relay 也永远显示「未配置」，跨机房间等于废的。
+  const b = await boot({ cloud: { relayUrl: 'http://127.0.0.1:8787/' } });
+  try {
+    const res = await call(routeFor(b.state, 'exact', '/deck').handler, { url: '/deck' });
+    assert.equal(res.statusCode, 200);
+    // 末尾斜杠要被规整掉，页面上不该出现双斜杠
+    assert.ok(res.body.includes('http://127.0.0.1:8787'), `/deck 没显示 relay 地址：${String(res.body).slice(0, 200)}`);
+    assert.ok(!/relay：<span class="muted">未配置/.test(res.body), 'relay 配了却还显示未配置');
+  } finally {
+    b.cleanup();
+  }
+});
+
+test('扁平写法 relayUrl 也认（老配置兼容，新写法 cloud.relayUrl 优先）', async () => {
+  const flat = await boot({ relayUrl: 'http://10.0.0.9:9000' });
+  try {
+    const res = await call(routeFor(flat.state, 'exact', '/deck').handler, { url: '/deck' });
+    assert.ok(res.body.includes('http://10.0.0.9:9000'), '扁平 relayUrl 没生效');
+  } finally {
+    flat.cleanup();
+  }
+  const both = await boot({ cloud: { relayUrl: 'http://new.example:1' }, relayUrl: 'http://old.example:2' });
+  try {
+    const res = await call(routeFor(both.state, 'exact', '/deck').handler, { url: '/deck' });
+    assert.ok(res.body.includes('http://new.example:1'), 'cloud.relayUrl 应优先');
+    assert.ok(!res.body.includes('http://old.example:2'), '两处都填时应只用 cloud.relayUrl');
+  } finally {
+    both.cleanup();
+  }
+});
+
+test('回归：机级目录已激活工作室版时，deck_room create 不许再说"你是免费版"', async () => {
+  // 实机踩过的坑：建云房间的档位判断拿 rootOf()（工作区）去读授权，
+  // 而授权文件在机级目录 → 明明激活了，还回一句"这台机器现在是免费版"。
+  const saved = process.env.AGENTDECK_LICENSE_PUBKEY;
+  process.env.AGENTDECK_LICENSE_PUBKEY = testPubB64;
+  const b = await boot({ licenseRoot: '', cloud: { relayUrl: 'http://127.0.0.1:9' } });
+  try {
+    const keyPath = licensePath(machineStateRoot());
+    mkdirSync(dirname(keyPath), { recursive: true });
+    writeFileSync(keyPath, issuePro({ tier: 'studio' }), 'utf8');
+
+    const room = b.state.tools.find((t) => t.name === 'deck_room');
+    assert.ok(room, '缺 deck_room 工具');
+    const out = await room.execute({ action: 'create', name: '回归房间' }, {});
+    const body = typeof out === 'string' ? out : String(out?.text ?? JSON.stringify(out));
+    assert.ok(!/免费版/.test(body), `被误判成免费版：${body.slice(0, 240)}`);
+    // 端口 9 是 discard：一定会连不上，但报的必须是网络错，不是档位错
+    assert.match(body, /失败|连不上|不可用|超时|refused|fetch/i, `没有走到网络那一步：${body.slice(0, 240)}`);
+  } finally {
+    if (saved === undefined) delete process.env.AGENTDECK_LICENSE_PUBKEY;
+    else process.env.AGENTDECK_LICENSE_PUBKEY = saved;
+    b.cleanup();
+  }
+});
+
+/* ── 6. 授权激活：整条链路（HTTP → 验签 → 落盘 → 页面/工具生效）───────────── */test('POST /adbp/deck/license：GET 拒、空码拒、垃圾码拒且不落盘', async () => {
   const b = await boot();
   const saved = process.env.AGENTDECK_LICENSE_PUBKEY;
   process.env.AGENTDECK_LICENSE_PUBKEY = testPubB64;

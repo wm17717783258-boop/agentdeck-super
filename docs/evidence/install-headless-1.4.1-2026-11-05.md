@@ -5,7 +5,7 @@
 
 - 时间：2026-11-05 15:00–15:03（Asia/Shanghai）
 - 机器：Windows · Node v24.15.0 · DSH 0.2.1-rc.5 · pnpm 11.28.5（DSH 运行时自带）
-- 被测插件：`agentdeck-super-1.4.1.tgz` — **约 313 KiB / 58 个文件**（精确字节数每次 `npm pack` 都会随文档内容小幅浮动，以命令输出为准；解包约 0.8 MiB）
+- 被测插件：`agentdeck-super-1.4.1.tgz` — **约 319 KiB / 60 个文件**（精确字节数每次 `npm pack` 都会随文档内容小幅浮动，以命令输出为准；解包约 0.8 MiB）
 - 测试 profile：`C:\Users\王冕\.dsh\profiles\agentdecktest`（独立 profile，不碰日常在用的 `desktop`）
 - 工作目录：`D:\adsk-headless-proof`（空目录，故意不是源码目录）
 
@@ -20,7 +20,7 @@ pwsh -File scripts\release.ps1 -Version 1.4.1     # 内部：改版本 → 281 �
 
 ```text
 [4/5] npm pack
-    ✓ agentdeck-super-1.4.1.tgz · 58 个文件 · 313 KiB
+    ✓ agentdeck-super-1.4.1.tgz · 60 个文件 · 319 KiB
 [5/5] 装进隔离 profile：agentdecktest
     · 用 C:\Users\王冕\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.mjs 当 pnpm（临时 shim：...）
       dependencies:

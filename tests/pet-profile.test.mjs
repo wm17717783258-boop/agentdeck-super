@@ -207,7 +207,7 @@ test('summarize：前 5 条习惯 + 三项统计 + 可塞进 system prompt 的�
   assert.equal(out.ok, true)
   assert.equal(out.topHabits.length, 5, '最多 5 条')
   assert.deepEqual(out.topHabits.map((h) => h.key), ['k0', 'k1', 'k2', 'k3', 'k4'])
-  assert.deepEqual(out.stats, { tasksDone: 12, activeDays: 2, firstDay: '2026-10-31' })
+  assert.deepEqual(out.stats, { tasksDone: 12, tasksAdded: 0, activeDays: 2, firstDay: '2026-10-31' })
   assert.equal(typeof out.personaHint, 'string')
   assert.match(out.personaHint, /数字分身「小满」/)
   assert.match(out.personaHint, /你常在 22 点完成任务/)
@@ -217,7 +217,7 @@ test('summarize：前 5 条习惯 + 三项统计 + 可塞进 system prompt 的�
 
   const empty = summarize(newStore(tempRoot('summary-empty')))
   assert.equal(empty.topHabits.length, 0)
-  assert.deepEqual(empty.stats, { tasksDone: 0, activeDays: 0, firstDay: null })
+  assert.deepEqual(empty.stats, { tasksDone: 0, tasksAdded: 0, activeDays: 0, firstDay: null })
   assert.match(empty.personaHint, /还没有足够的行为数据/)
 })
 

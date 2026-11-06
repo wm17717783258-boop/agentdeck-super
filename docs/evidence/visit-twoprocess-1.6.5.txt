@@ -1,0 +1,125 @@
+# 串门：两个独立进程、两个独立工作区（1.6.5）
+
+- 时间：2026-11-05T10:53:21.737Z
+- 版本：agentdeck-super@1.6.5
+- 小犀的工作区：D:\demo\visit2\xiaoxi\work ｜ 小鹿的工作区：D:\demo\visit2\xiaolu\work
+- 每一步都是 `node bin/nexi.mjs call …` 起的**全新进程**，两边的状态只靠盘上文件传递。
+
+## 1) 小犀（独立进程 #1）发邀请函
+```text
+【pet_visit】邀请函好了（可以派活，2026-11-05 22:53 前有效）
+dsh://agentdeck/visit?t=<邀请令牌已脱敏，长度 498>
+
+把上面这条链接发给朋友，对方在自己的会话里用 pet_visit accept 收下即可。
+想自动换名片的话，可以用 reply 参数给一个 http 回执地址。
+签发密钥：kid_bfc5c41e33ce（公钥在邀请函里，对方在哪台机器上都能验签）
+```
+
+## 2) 小鹿（独立进程 #2）收下邀请函
+```text
+【pet_visit 主人的名片】小犀
+皮肤：basic
+拿手习惯：还没养成习惯
+能帮忙：聊天、记笔记
+
+签名：Ed25519 校验通过（凭证没被改过，签发方密钥 kid_bfc5c41e33ce）
+握手：这次没联网，名片靠你自己转给对方
+有效期到：2026-11-05 22:53
+已记进串门记录（.agentdeck/pet/visits.log）
+```
+
+## 3) 小鹿那台的皮肤清单（顺手确认两个工作区互不干扰）
+```text
+【pet_skin】共 4 套皮肤（当前：basic）
+1. 原味（basic）免费 · 已启用
+2. 霓虹（nio）免费
+3. 水墨（ink）免费
+4. 极光（premium-aurora）¥18 · 未解锁
+用法：pet_skin activate id=霓虹 换皮肤；pet_skin states 看五种状态。
+```
+
+## 4) 小犀建组（独立进程 #3）
+```text
+【team_board】已创建小组 team_152c80787e（跨进程串门）
+目标：证明两个独立进程能靠盘上文件走完串门
+成员：小犀
+下一步：用 {"action":"add","teamId":"team_152c80787e","title":"…","acceptance":"…"} 落任务，或用 team_orchestrate 直接开跑。
+```
+
+## 5) 小鹿（独立进程 #4）发一张求助便签
+```text
+【pet_visit】求助便签好了，把下面这段 JSON 复制给对方，让对方用 pet_visit receive 收下（会落成一条任务）：
+```json
+{
+  "v": 1,
+  "kind": "ask",
+  "id": "note_f52f662d55",
+  "from": {
+    "name": "小鹿",
+    "petSkin": "basic",
+    "habitsTop3": [],
+    "capabilities": [
+      "聊天",
+      "记笔记"
+    ]
+  },
+  "at": "2026-11-05T10:53:23.013Z",
+  "payload": {
+    "title": "帮我review一下这个正则",
+    "acceptance": "指出至少一处回溯风险",
+    "role": "reviewer",
+    "note": ""
+  },
+  "to": "小犀"
+}
+```
+```
+
+## 6) 小犀（独立进程 #5）收下求助 —— 便签落到任务板
+```text
+【pet_visit】收下了 小鹿 的求助，已落成任务 task_6ad789024d（队：team_152c80787e）。
+```
+
+## 7) 小犀（独立进程 #6）看板子：任务真在
+```text
+【team_board】小组 team_152c80787e 任务（1 条）
+
+· task_6ad789024d [pending] 帮我review一下这个正则  角色:reviewer
+    验收：指出至少一处回溯风险
+
+进度：完成 0/1
+```
+
+## 8) 两边的串门记录（各自盘上）
+```text
+【pet_visit】最近的串门记录
+· 2026-11-05 18:53 invite 小犀
+· 2026-11-05 18:53 note-in 小鹿
+```
+
+```text
+【pet_visit】最近的串门记录
+· 2026-11-05 18:53 accept 小犀（本机验签）
+· 2026-11-05 18:53 note-out —
+```
+
+## 9) 冒名顶替：把小犀名片上的名字改掉，签名立刻对不上
+```text
+【pet_visit】这张邀请收不下：邀请凭证的签名对不上，可能被改过
+```
+
+> 这一条是小鹿那台的**独立进程**给出的判断：它没有小犀的私钥，公钥又只能验不能签，
+> 所以改过的名片一定过不去。签名只证明「没被改过」+「是 kid_ 那把钥匙签的」，
+> 不证明「这把钥匙真属于某个真人」——身份绑定（TOFU / 域名 / DID）还没做，不吹。
+
+## 10) 盘上真的落了这些文件
+- xiaoxi/work/.agentdeck/pet/visits.log → 2 行
+- xiaolu/work/.agentdeck/pet/visits.log → 2 行
+- xiaoxi/work/.agentdeck/pet/visit-key.json → 8 行
+
+```text
+{"at":"2026-11-05T10:53:21.929Z","event":"invite","visitId":"visit_84eca4b1b1","scope":"work","exp":"2026-11-05T14:53:21.929Z","guest":"小犀"}
+{"at":"2026-11-05T10:53:23.217Z","event":"note-in","kind":"ask","noteId":"note_f52f662d55","taskId":"task_6ad789024d","guest":"小鹿"}
+```
+
+> 邀请令牌不写进证据；`visit-key.json` 是本机签名密钥对（私钥不出门），只报"文件在不在"，不打印内容。

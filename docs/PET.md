@@ -46,7 +46,8 @@ pet.visit.makeInvite({ scope: 'work' });                  // 串门邀请
 ├─ profile.bak.json                 # importProfile 覆盖前自动备份（只有导入过才有）
 ├─ profile.corrupt-<毫秒时间戳>.json  # 原档案坏了就整份挪走，绝不在坏文件上继续写
 ├─ visits.log                       # 串门流水（JSONL，一行一件事）
-├─ visit-secret                     # 本机签名密钥（64 位 hex，权限 0600）
+├─ visit-key.json                   # 本机 Ed25519 密钥对（权限 0600；私钥一个字节都不出门）
+├─ visit-secret                     # 只给旧版 v1 邀请函留的 HMAC 密钥（64 位 hex，权限 0600；只在读老链接时才生成）
 └─ skins/<id>/skin.json + <sprite>  # 用户自己塞的第三方皮肤（可选）
 ```
 
@@ -54,7 +55,8 @@ pet.visit.makeInvite({ scope: 'work' });                  // 串门邀请
 | --- | --- | --- |
 | `profile.json` | `store.write` / `update` / `observe` / `importProfile` | 回到"刚出生"的默认档案，皮肤回到 `basic` |
 | `visits.log` | 邀请、收邀请、发便签、收便签各记一行 | 只是历史没了，串门照旧 |
-| `visit-secret` | 第一次造邀请函时生成 | 旧的邀请链接全部验签失败（链接本身仍能跨机器收下，只是标"验不了签"） |
+| `visit-key.json` | 第一次造邀请函时生成 | 换一对新密钥（`kid_` 会变）；**已经发出去的旧邀请函仍然能在对方机器上验签**——公钥是写在邀请函里的 |
+| `visit-secret` | 只在读一张**旧版 v1** 邀请函时补生成 | 旧链接降级成"验不了签"，但格式 / 有效期 / 范围照旧校验 |
 | `skins/` | 用户自己拷进去 | 自己装的皮肤消失，内置三套不受影响 |
 
 写入方式：先写同目录临时文件再 `rename`，所以断电不会留下半截 JSON。档案文件损坏（解析不了）时会被重命名成 `profile.corrupt-<ms>.json` 存档，然后从默认档案重新开始——**用户还能自己捡回来**。
@@ -261,13 +263,17 @@ token 是自解释的两段式：第一段是 payload 的 base64url，第二段�
 
 | payload 字段 | 说明 |
 | --- | --- |
-| `v` / `kind` | `1` / `'invite'`（版本与类型都校验，未来扩展直接加 kind） |
+| `v` / `kind` | `2` / `'invite'`（版本与类型都校验；`v:1` 的老令牌仍然读得下，未来扩展直接加 kind） |
 | `id` | `visit_<10 hex>`，同一次串门的身份 |
 | `from` | 名片：`name` / `petSkin` / `habitsTop3` / `capabilities` |
 | `scope` | `visit`（只串门）/ `work`（可以派活） |
 | `iat` / `exp` | 毫秒时间戳；ttl 默认 1 天，夹在 1 分钟 ~ 30 天 |
-| `sid` | 本机密钥指纹（`sha256(secret)` 前 8 位） |
+| `alg` | `'ed25519'`，签名算法写进凭证本身，将来换算法不用猜 |
+| `pub` | 签发方的**公钥**（base64url，SPKI DER）。就放在邀请函里 ⇒ 任何机器都能验，不用预先交换密钥 |
+| `kid` | 公钥指纹 `kid_<12 hex>`，人话里用来指认"是这把钥匙签的" |
 | `reply` | 可选回执地址，只收 `http(s)://` |
+
+签名覆盖 `base64url(payload) + '.'` 之前的全部字节，塞在令牌末尾那段（`pet_visit accept` 会先验签再看内容，顺序不能反）。
 
 **第二步：对方收下**
 
@@ -278,9 +284,11 @@ const accepted = pet.visit.acceptInvite({ token, http }); // http = 宿主注入
 
 | 情况 | `verified` | `verifyNote` |
 | --- | --- | --- |
-| 同一台机器（`sid` 对得上）且签名正确 | `true` | 验签通过 |
-| 同一台机器但签名不对 / 被篡改 | 拒收 | `签名对不上` |
-| 跨机器（`sid` 不认识） | `false` | 明说"跨机器的邀请本机没法验签"——**如实标注，不假装安全** |
+| v2 令牌，签名对得上（**任何机器**，包括对方电脑） | `true` | 验签通过（Ed25519，签发方 `kid_…`） |
+| v2 令牌被改过 / 签名不对 | 拒收 | `邀请凭证的签名对不上，可能被改过` |
+| 有人拿自己的密钥重签一张假名片 | `true`（但 `kid` 变了） | 验得过，**但那把钥匙不是原来那台机器的**——身份绑定还没做，工具会同时报 `sameMachine:false` 和 `kid` |
+| 同一台机器签的（顺带确认是本机） | `true` + `sameMachine:true` | 本机签发 |
+| v1 老令牌，跨机器 | `false` | 明说"旧版（v1）跨机器邀请本机没法验签"——**如实标注，不假装安全** |
 | 过期 | 拒收 | `邀请已过期` |
 | scope 不符（`expectedScope`） | 拒收 | `这张邀请的范围是 visit，不是 work` |
 
@@ -314,7 +322,7 @@ const accepted = pet.visit.acceptInvite({ token, http }); // http = 宿主注入
 
 - `profile.json` 的全部内部账本：`signals`（时段/角色/标签频次）、`seen`（事件指纹）、`days`（活跃日）、`stats` 明细
 - `persona` 原文、`traits` 自由字段、聊天记录、文件内容、任务详情
-- 串门流水 `visits.log`、签名密钥 `visit-secret`
+- 串门流水 `visits.log`、签名密钥 `visit-key.json`（私钥）
 
 **可能跨机器的**，只有两样东西，且都是**摘出来的摘要**：
 
@@ -324,8 +332,8 @@ const accepted = pet.visit.acceptInvite({ token, http }); // http = 宿主注入
 明确不做的事：
 
 - 不做"把工作区打包给朋友"，串门只带名片和便签。
-- 不把习惯的原始频次、活跃日、聊天片段塞进 token；`tests/pet-visit.test.mjs` 里有一条用例专门断言 token 的字段集合恰好是 `exp/from/iat/id/kind/scope/sid/v`。
-- 跨机器验签在密码学上做不到（没有共享密钥），所以**如实报 `verified:false`**，界面/工具提示里会写明"这不是本机签发的，签名没法验证"。
+- 不把习惯的原始频次、活跃日、聊天片段塞进 token；`tests/pet-visit.test.mjs` 里有一条用例专门断言 token 的字段集合恰好是 `alg/exp/from/iat/id/kid/kind/pub/scope/v`。
+- 跨机器验签已经做到了（Ed25519，公钥随邀请函走），但**它只证明"这张名片没被改过 + 是 `kid_` 那把钥匙签的"**；不证明这把钥匙真的属于某个真人。身份绑定（TOFU / 域名 / DID）**还没做**，所以工具和 `/visit` 落地页都不写"验签通过 = 实名认证"。
 - 授权只读结论（`lib/license.js` 的 `currentLicense` / `entitlements`），**不自己解析凭证串**，也不把凭证写进档案。
 
 ---
@@ -366,7 +374,7 @@ const hint = pet.summarize().personaHint;
 
 | 限制 | 影响 | 计划 |
 | --- | --- | --- |
-| 跨机器邀请验不了签 | 只能保证"内容没被改坏"，不能证明"是谁发的" | v1.6 进云端房间后走互信换取（`sid` 对换 + 房间令牌） |
+| 验签能证明"没被改过"，不证明"是谁" | 有人拿自己的密钥重签一张假名片，验签照样通过（`kid_` 会变） | 身份绑定还没做：TOFU 首见记录 → 域名/DID 绑定 → 房间内互认，排在 M3 之后 |
 | 串门靠人转发链接/JSON | 不是自动同步 | 有房间后由房间转发，`visit.js` 的 `http` 接口不用改 |
 | npm 打包白名单里目前没有 `assets/` | `npm publish` 出来的包会**丢掉皮肤素材** | 发布前由维护者把 `assets/skins/**` 加进 `package.json` 的 `files`（本层改不了 `package.json`） |
 | 会议质量取决于宿主模型 | 小模型可能给不出合法 JSON | 已有三级提取 + 明确失败；不会污染任务板 |
@@ -387,7 +395,7 @@ node --test --test-concurrency=1 "tests/pet-*.test.mjs"
 | `tests/pet-profile.test.mjs` | 14 | 默认档案、原子写、损坏恢复、幂等、习惯升级与淘汰、摘要、导入导出 |
 | `tests/pet-skins.test.mjs` | 14 | 内置三套、付费判定（点名/档位/通配/过期）、拒绝话术、五状态渲染、占位图、本地皮肤不可信输入 |
 | `tests/pet-meeting.test.mjs` | 11 | 参数夹取、主持人与发言人的 system 注入、三级 JSON 提取、中文键、落板与依赖、失败不落半成品 |
-| `tests/pet-visit.test.mjs` | 17 | 邀请函结构、隐私字段白名单、ttl/scope 夹取、本机验签、过期/篡改/坏版本、跨机器如实标注、http 握手、便签收派、串门流水、无 root 降级；**含 5 例 `createPetLayer` / `petTools` 总装冒烟** |
-| **合计** | **56** | 全绿（Node 24 · Windows） |
+| `tests/pet-visit.test.mjs` | 20 | 邀请函结构、隐私字段白名单（`alg/exp/from/iat/id/kid/kind/pub/scope/v`）、ttl/scope 夹取、Ed25519 跨机器真验签、私钥不出门、过期/篡改/坏版本、重签冒充时 kid 对不上、v1 老令牌向后兼容、http 握手、便签收派、串门流水、无 root 降级；**含 5 例 `createPetLayer` / `petTools` 总装冒烟** |
+| **合计** | **59** | 全绿（Node 24 · Windows） |
 
 测试原则：每个用例一个临时 `root`（`fs.mkdtempSync`）、内存任务板（`createBoard({ root: null })`）、注入固定时钟（`2026-11-01 09:00`）、假 `http`——**零网络、零真实用户目录**。

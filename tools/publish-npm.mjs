@@ -188,7 +188,7 @@ try {
   ok(`已发布 ${pkg.name}@${pkg.version}`);
   log('\n接下来（都很快）：');
   log(`  1) 自测：dsh plugin add ${pkg.name}`);
-  log('  2) 上架市场：给 awesome-dsh-plugin 提 PR（docs/MARKET.md 里有现成文案）');
+  log('  2) 上架市场：给 awesome-dsh-plugin 提 PR（内部市场文案里有现成稿）');
   log('  3) 通知用户：README 顶部换成 npm 版本徽章 + 一句"一行装好"');
 } catch (err) {
   bad('发布失败');

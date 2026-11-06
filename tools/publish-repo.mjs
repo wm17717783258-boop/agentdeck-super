@@ -57,6 +57,8 @@ const bad = (s) => {
 const HARD_SKIP = [
   '.git', 'node_modules', 'tmp', '.secrets', '.agentdeck', '.agentdeck-issuer', '.relay-data',
   '.env', '.env.local', '.DS_Store', 'Thumbs.db', 'desktop.ini',
+  // 内部资料：定价、变现、竞品、发布操作手册 —— 开源仓库里不发（npm 包也不带）
+  'internal', 'coverage', '.nyc_output',
 ];
 
 /** 兜底的敏感文件名后缀：就算不小心放进来也不发 */
