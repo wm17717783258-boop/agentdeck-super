@@ -193,8 +193,8 @@ test('隐私边界：token 里只有名片，signals / persona / stats 一个都
 
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['alg', 'exp', 'from', 'iat', 'id', 'kid', 'kind', 'pub', 'scope', 'v'],
-    'v2 邀请函：名片 + 时间 + 公钥 + kid，就这些',
+    ['alg', 'box', 'boxFp', 'exp', 'from', 'iat', 'id', 'kid', 'kind', 'pub', 'scope', 'v'],
+    'v2 邀请函：名片 + 时间 + 签名公钥/kid + 加密公钥（1.10.0 加 box/boxFp，用来协商便签加密），就这些',
   )
   assert.equal(payload.v, 2)
   assert.equal(payload.alg, 'ed25519')

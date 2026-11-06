@@ -126,6 +126,8 @@ async function main() {
         cardOk: card.ok,
         inviteOk: invite.ok,
         kid: invite.ok ? String(invite.kid || '') : (card.ok ? '（卡片本身不带 kid）' : null),
+        box: invite.ok ? String(invite.box || '') : null,
+        boxFp: invite.ok ? String(invite.boxFp || '') : null,
         tokenLen: invite.ok ? String(invite.token || '').length : 0,
         url: invite.ok ? String(invite.url || '') : '',
       }) + '\\n@@END@@');
@@ -200,36 +202,68 @@ async function main() {
     }
     say('');
 
-    /* ── 3. 乙机：留一张求助便签给甲机 ──────────────────────────────── */
-    say('【第 4 步】乙机留一张求助便签（这就是"人要传过去的那段 JSON"）');
+    /* ── 4. 乙机：留一张求助便签 ─────────────────────────────────────── */
+    say('【第 4 步】乙机留一张求助便签，并把便签**加密**（只有甲机解得开）');
     const stepB2 = runOn('乙机-留便签', homeB, workB, `
-      import { makeNote, profileCard } from '__VISIT_MOD__';
+      import { makeNote, profileCard, readInviteToken } from '__VISIT_MOD__';
       import { readFileSync, writeFileSync } from 'node:fs';
       const work = process.env.NEXI_VISIT_WORK;
       const profile = { name: '李工', pet: '阿墨', skills: ['数据'], bio: '乙机本人' };
+      // 从收下的邀请函里取甲机的加密公钥 —— 这就是"端到端加密"的握手起点
+      const invite = JSON.parse(readFileSync(${JSON.stringify(inviteFile)}, 'utf8'));
+      const parsed = readInviteToken(invite.token, { root: work });
       const note = makeNote({
         profile,
         kind: 'ask',
         root: work,
         to: '王冕',
-        payload: { title: '帮我看下这张报表', acceptance: '口径能对上 10 月的账', role: 'worker', replyUrl: ${JSON.stringify(replyUrl)} },
+        payload: {
+          title: '帮我看下这张报表',
+          acceptance: '口径能对上 10 月的账',
+          role: 'worker',
+          replyUrl: ${JSON.stringify(replyUrl)},
+          recipientBox: parsed.box || null,
+        },
       });
       writeFileSync(work + '/note.json', JSON.stringify(note, null, 2));
+      const wire = JSON.stringify(note.note);
       process.stdout.write('@@B2@@' + JSON.stringify({
         ok: note.ok,
         reason: note.reason || null,
         kind: note.ok ? note.note?.kind : null,
         title: note.ok ? note.note?.payload?.title : null,
         to: note.ok ? note.note?.to : null,
+        encrypted: note.encrypted === true,
+        encReason: note.enc?.reason || null,
+        theirBox: parsed.box || null,
+        theirFp: parsed.boxFp || null,
+        leakedTitle: wire.includes('帮我看下这张报表'),
+        leakedAcceptance: wire.includes('口径能对上 10 月的账'),
+        hasPlainPayload: note.note?.payload !== undefined,
+        myBox: note.note?.box || null,
       }) + '\\n@@END@@');
     `);
     const b2 = parseJson(stepB2.stdout, '@B2@@');
     check(b2 && b2.ok === true, '乙机造出了一张求助便签', b2?.reason || '');
     check(b2 && b2.kind === 'ask', '便签类型是 ask（求助）', String(b2?.kind));
-    check(b2 && b2.title === '帮我看下这张报表', '便签带上标题', String(b2?.title));
+    // 加密之后 payload 字段整个不存在（标题在密文里），所以这里**不能**再断言 payload.title；
+    // 真正该验的是"明文一丝不漏"，标题正确性由下一步甲机解密后落任务来证。
+    // 注意：payload 没有时取出来是 undefined，不是 null —— 这里两种都算"没有明文标题"。
+    check(b2 && b2.encrypted === true && (b2.title == null), '加密后便签里没有明文标题（标题只在密文里）',
+      `encrypted=${b2?.encrypted} title=${b2?.title}`);
+    check(b2?.theirBox && b2.theirBox === a1?.box, '乙机从邀请函里拿到了甲机的加密公钥',
+      String(b2?.theirFp || ''));
+    check(b2?.encrypted === true, '便签真的加密了（AES-256-GCM）', String(b2?.encReason || ''));
+    check(b2?.leakedTitle === false, '明文标题不在线上传的内容里');
+    check(b2?.leakedAcceptance === false, '明文验收标准不在线上传的内容里');
+    check(b2?.hasPlainPayload === false, '加密之后便签里没有明文 payload 字段');
+    check(Boolean(b2?.myBox) && b2.myBox !== b2.theirBox, '乙机带上了自己的加密公钥（不是抄甲机的）');
     const noteFile = join(workB, 'note.json');
     const noteWrap = JSON.parse(readFileSync(noteFile, 'utf8'));
     const note = noteWrap.note || noteWrap; // makeNote 返回的是外壳，便签本体在 .note 里
+    // 落盘的那份也一样是密文（不是只有内存里加密）
+    const onDisk = readFileSync(noteFile, 'utf8');
+    check(!onDisk.includes('帮我看下这张报表'), '落盘的便签文件里也是密文');
     say('');
 
     /* ── 4. 甲机：收下便签，真落进任务板 ───────────────────────────── */
@@ -255,14 +289,16 @@ async function main() {
         addedTitle: added[0]?.payload?.title || null,
         addedRole: added[0]?.payload?.role || null,
         guest: got.guest || null,
+        decrypted: got.decrypted === true,
         taskId: got.taskId || null,
       }) + '\\n@@END@@');
     `);
     const a2 = parseJson(stepA2.stdout, '@A2@@');
     check(a2 && a2.ok === true, '甲机收下了便签', a2?.reason || '');
     check(a2 && a2.guest === '李工', '甲机知道这张便签是谁留的', String(a2?.guest));
+    check(a2 && a2.decrypted === true, '甲机是**解密**得到内容的（不是收了个明文）');
     check(a2 && a2.added === 1, '便签真的变成了一条任务（任务板被调用 1 次）', `added=${a2?.added}`);
-    check(a2 && a2.addedTitle === '帮我看下这张报表', '任务标题来自便签', String(a2?.addedTitle));
+    check(a2 && a2.addedTitle === '帮我看下这张报表', '解密后标题正确（端到端加密没丢内容）', String(a2?.addedTitle));
     check(a2 && a2.addedRole === 'worker', '任务角色来自便签', String(a2?.addedRole));
     say('');
 

@@ -1,5 +1,5 @@
 # M4.5 真机证据：MCP Streamable HTTP（一个 URL 接管 21 个工具，不用装东西）（1.10.0）
-# 2026-11-06T11:24:15.383Z
+# 2026-11-06T12:14:24.079Z
 
 ## 0. 这次验的是哪份东西
 
@@ -10,7 +10,7 @@
 
 ## 1. 宿主起来了，同一个 URL 既是网页也是 MCP 端点
 
-- 宿主地址：`http://127.0.0.1:51097`（真 `dsh --profile web` 进程，PID 27008）
+- 宿主地址：`http://127.0.0.1:61828`（真 `dsh --profile web` 进程，PID 28504）
 
 ```json
 {
@@ -55,25 +55,25 @@ tools/list  → 21 个：super_agent、team_orchestrate、agent_join、team_boar
 ## 3. 两个远程客户端协作：建组 → 开会 → 结会落任务
 
 ```
-{"text":"【team_board】已创建小组 team_e4f06ea048（HTTP 真机协作）\n目标：两个远程客户端通过 HTTP 建组、开会、落任务\n成员：（暂无，可用 agent_join 或 super_agent 带入）\n下一步：用 {\"action\":\"add\",\"teamId\":\"team_e4f06ea048\",\"title\":\"…\",\"acceptance\":\"…\"} 落任务，或用 team_orchestrate 直接开跑。"}
+{"text":"【team_board】已创建小组 team_c4fd781e1b（HTTP 真机协作）\n目标：两个远程客户端通过 HTTP 建组、开会、落任务\n成员：（暂无，可用 agent_join 或 super_agent 带入）\n下一步：用 {\"action\":\"add\",\"teamId\":\"team_c4fd781e1b\",\"title\":\"…\",\"acceptance\":\"…\"} 落任务，或用 team_orchestrate 直接开跑。"}
 ---
-{"text":"【deck_meeting】会开起来了：远程 MCP 端点要不要默认开着\n- 会议号：mtg_20261106_8a68a8\n- 参与：Claude（Claude Code）、Cursor（Cursor）\n- 下一步：让每个 Agent 调 deck_meeting action:\"submit\" meetingId:\"mtg_20261106_8a68a8\" 说自己的意见，最后由一个人 action:\"conclude\"。"}
+{"text":"【deck_meeting】会开起来了：远程 MCP 端点要不要默认开着\n- 会议号：mtg_20261106_4fe23b\n- 参与：Claude（Claude Code）、Cursor（Cursor）\n- 下一步：让每个 Agent 调 deck_meeting action:\"submit\" meetingId:\"mtg_20261106_4fe23b\" 说自己的意见，最后由一个人 action:\"conclude\"。"}
 ---
 {"text":"【deck_meeting】记下了（第 1 条）：Claude（Claude Code）支持 — 默认开着，但只监听 127.0.0.1——想对外就让人显式改配置，别默认暴露。"}
 {"text":"【deck_meeting】记下了（第 2 条）：Cursor（Cursor）补充 — 补充：工具里写盘/起进程的那几个，得有个只读档位，不然远程接管等于把整台机器交出去。"}
 ---
-{"text":"【deck_meeting】结会了：远程 MCP 端点要不要默认开着\n- 收到了 2 条意见\n- 决议：Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并给只读档位。\n- 纪要：D:\\demo\\mcphttp\\work\\.agentdeck\\meetings\\mtg_20261106_8a68a8\\minutes.md\n- 任务：1 条已写进任务板\n  · [task_e8712db11e] 给 MCP HTTP 端点加只读档位（worker）"}
+{"text":"【deck_meeting】结会了：远程 MCP 端点要不要默认开着\n- 收到了 2 条意见\n- 决议：Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并给只读档位。\n- 纪要：D:\\demo\\mcphttp\\work\\.agentdeck\\meetings\\mtg_20261106_4fe23b\\minutes.md\n- 任务：1 条已写进任务板\n  · [task_5e13a33a77] 给 MCP HTTP 端点加只读档位（worker）"}
 ```
 
-- 纪要文件：`D:\demo\mcphttp\work\.agentdeck\meetings\mtg_20261106_8a68a8\minutes.md`
+- 纪要文件：`D:\demo\mcphttp\work\.agentdeck\meetings\mtg_20261106_4fe23b\minutes.md`
 
 纪要里两位客户端的原话（逐字，不是二创）：
 
 ```md
 # 会议纪要：远程 MCP 端点要不要默认开着
 
-- 会议号：mtg_20261106_8a68a8
-- 开会时间：2026-11-06T11:24:26.221Z
+- 会议号：mtg_20261106_4fe23b
+- 开会时间：2026-11-06T12:14:32.893Z
 - 目标：决定默认开关与安全边界
 - 参与：Claude（Claude Code）、Cursor（Cursor）
 - 状态：已结会
@@ -89,7 +89,7 @@ Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并
 
 ## 拆出的任务（1 条）
 
-- [task_e8712db11e] 给 MCP HTTP 端点加只读档位（worker）｜验收：配置 readOnly=true 时，写盘/起进程的工具直接拒绝并说明原因
+- [task_5e13a33a77] 给 MCP HTTP 端点加只读档位（worker）｜验收：配置 readOnly=true 时，写盘/起进程的工具直接拒绝并说明原因
 
 ---
 由 Nexi 灵犀（agentdeck-super）自动记录：每一条意见都来自真实的 Agent 进程，原样保留，不改写。
@@ -99,9 +99,9 @@ Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并
 任务板（用 CLI 这条独立通道读回来）：
 
 ```
-【team_board】小组 team_e4f06ea048 任务（1 条）
+【team_board】小组 team_c4fd781e1b 任务（1 条）
 
-· task_e8712db11e [pending] 给 MCP HTTP 端点加只读档位  角色:worker
+· task_5e13a33a77 [pending] 给 MCP HTTP 端点加只读档位  角色:worker
     验收：配置 readOnly=true 时，写盘/起进程的工具直接拒绝并说明原因
 
 进度：完成 0/1
@@ -131,13 +131,13 @@ Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并
 | 8 | 客户端 A tools/list 拿到 21 个工具（HTTP 与 stdio 同一份清单） | ✅ | 21 |
 | 9 | 工具名与宿主完全一致（含 deck_meeting / pet_skin） | ✅ | super_agent,team_orchestrate,agent_join,team_board |
 | 10 | 客户端 B（另一条连接）也 initialize 成功 | ✅ | 2025-06-18 |
-| 11 | 客户端 A 通过 HTTP 建起小组（有 teamId） | ✅ | team_e4f06ea048 |
-| 12 | 客户端 A 通过 HTTP 开起一场会（有会议号） | ✅ | mtg_20261106_8a68a8 |
+| 11 | 客户端 A 通过 HTTP 建起小组（有 teamId） | ✅ | team_c4fd781e1b |
+| 12 | 客户端 A 通过 HTTP 开起一场会（有会议号） | ✅ | mtg_20261106_4fe23b |
 | 13 | 两个不同客户端各发一条言，都被收下 | ✅ | {"text":"【deck_meeting】记下了（第 1 条）：Claude（Claude Code）支持 — 默认… \| {"text":"【deck_meeting】记下了（第 2 条）：Cursor（Cursor）补充 — 补充 |
 | 14 | 客户端 B 结会并把决议拆成任务 | ✅ | {"text":"【deck_meeting】结会了：远程 MCP 端点要不要默认开着\n- 收到了 2 条意见\n- 决议：Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并给只读档位。\n- 纪要： |
-| 15 | 任务板上真有这条任务（用 CLI 这条独立通道读回） | ✅ | 【team_board】小组 team_e4f06ea048 任务（1 条）
+| 15 | 任务板上真有这条任务（用 CLI 这条独立通道读回） | ✅ | 【team_board】小组 team_c4fd781e1b 任务（1 条）
 
-· task_e8712db11e [pending] 给 MCP HTTP 端点加只读档位  角色:worker
+· task_5e13a33a77 [pending] 给 MCP HTTP 端点加只读档位  角色:worker
     验收：配置 readOnly=tru |
 | 16 | 纪要在盘上，且两位客户端的原话逐字在 | ✅ | 530 字节 |
 | 17 | 坏 JSON → HTTP 400 + JSON-RPC -32700 | ✅ | HTTP 400 code=-32700 |
@@ -152,6 +152,6 @@ Streamable HTTP 默认只绑 127.0.0.1；对外暴露必须显式改配置，并
 
 ## 6. 收摊
 
-- 宿主进程（PID 27008）已 taskkill /T /F
+- 宿主进程（PID 28504）已 taskkill /T /F
 - 临时目录 `D:\demo\mcphttp` 已删
 - 原始帧：`docs\evidence\mcp-http-1.10.0.jsonl`

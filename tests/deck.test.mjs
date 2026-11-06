@@ -298,6 +298,28 @@ test('已安装未接入是中间态（warn），不是「已接入」', () => {
   assert.ok(html.includes('dot warn'));
 });
 
+test('只在 PATH 上找到 CLI（还没生成配置文件）时说清依据，且是待办黄灯不是完成绿灯', () => {
+  // 真机场景：Gemini CLI 装了、`gemini mcp list` 也认，但 ~/.gemini/settings.json
+  // 要第一次用才创建。以前这种会被判成「未安装」而漏掉一个宿主；
+  // 现在判成已安装，但必须让人看得出依据只是 CLI，而不是配置文件。
+  const html = deckPageHtml(fullVm({
+    mcp: {
+      hosts: [
+        { name: 'Gemini CLI', installed: true, registered: false, path: '/u/.gemini/settings.json', detectedBy: 'cli' },
+        { name: 'Claude Code', installed: true, registered: true, path: '/u/.claude.json', detectedBy: 'config' },
+      ],
+    },
+  }));
+  assert.ok(html.includes('只找到 CLI，还没生成配置文件'), '该说清探测依据');
+  assert.ok(html.includes('已安装·未接入'));
+  // 已接入那条才是绿灯；只找到 CLI 那条是黄灯
+  assert.ok(html.includes('dot ok'));
+  assert.ok(html.includes('dot warn'));
+  // 有配置文件的宿主不该被贴上"只找到 CLI"的标签
+  const codeRow = html.slice(html.indexOf('Claude Code'), html.indexOf('Claude Code') + 260);
+  assert.ok(!codeRow.includes('只找到 CLI'), '有配置文件的宿主不该标成只找到 CLI');
+});
+
 test('只写了配置、宿主本身没装，也不算「已接入」（黄灯＋写清楚）', () => {
   const html = deckPageHtml(fullVm({
     mcp: { hosts: [{ name: 'Claude Desktop', installed: false, registered: true, path: '/x/claude_desktop_config.json' }] },

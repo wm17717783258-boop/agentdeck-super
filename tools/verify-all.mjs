@@ -30,7 +30,7 @@ const NO_RECORD = argv.includes('--no-record');
 const SUITES = [
   {
     id: 'gate',
-    what: '全量回归（663 条单测）+ 红队 11 条',
+    what: '全量回归（678 条单测）+ 红队 11 条',
     cmd: ['tools/verify-security.mjs'],
     evidence: [`gate-${ver}.txt`, `security-redteam-${ver}.txt`],
     slow: true,
@@ -73,7 +73,7 @@ const SUITES = [
   },
   {
     id: 'visit',
-    what: '两个真人 / 两台机器 / 两个 Agent 跨进程真串一次门（邀请→验签→回卡→求助便签→落任务）',
+    what: '两个真人 / 两台机器 / 两个 Agent 跨进程真串一次门（邀请→验签→回卡→加密便签→解密落任务）',
     cmd: ['tools/verify-visit.mjs'],
     evidence: [`visit-2user-${ver}.txt`],
   },
@@ -95,7 +95,7 @@ const SUITES = [
     what: '8 宿主认证矩阵（会写真实宿主配置再回滚，慢）',
     cmd: ['bin/nexi.mjs', 'verify-host', '--all', '--record'],
     evidence: [`hosts-${ver}.txt`],
-    optional: true,   // 默认不在全跑里；它动真宿主配置，单独跑更合适
+    optional: true,   // 1.10.0 起本机 3 认证 / 0 失败；仍默认跳过：它会写真实宿主配置（虽然有备份+逐字节还原）
   },
 ];
 

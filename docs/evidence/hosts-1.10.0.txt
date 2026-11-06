@@ -1,0 +1,101 @@
+# 宿主认证矩阵 · agentdeck-super 1.10.0
+
+· 时间：2026-11-06T11:58:45.134Z（本机时区 Asia/Shanghai）
+· 机器：win32-x64 / Node v24.15.0
+· 口径：每台都跑「装 → 让宿主自己确认 → 卸 → 配置逐字节还原」，跑不动的老实标注
+
+| 宿主 | 层级 | 结论 | 依据 |
+| --- | --- | --- | --- |
+| Claude Desktop（`claude-desktop`） | A | 🟡 只验到配置层（宿主命令行不在本机，标「实验性」） | 无法真调用：no-probe-command；配置逐字节等于安装前 sha256=c430fd52b52db503…（顺序/空白有差，已用快照原样写回并复核） |
+| Claude Code（`claude-code`） | A | ✅ 已认证（装→调→卸→还原 四步） | claude mcp list → 宿主自己报出 nexi；配置逐字节等于安装前 sha256=5c102fed3af69f07…（顺序/空白有差，已用快照原样写回并复核） |
+| Cursor（`cursor`） | A | ⚪ 未安装（不伪造配置） | 宿主未安装 |
+| Windsurf（`windsurf`） | A | ⚪ 未安装（不伪造配置） | 宿主未安装 |
+| Codex（`codex`） | A | ✅ 已认证（装→调→卸→还原 四步） | codex mcp list → 宿主自己报出 nexi；配置逐字节等于安装前 sha256=dd3842ee8d442a70…（顺序/空白有差，已用快照原样写回并复核） |
+| Cline (VS Code)（`cline`） | A | ⚪ 未安装（不伪造配置） | 宿主未安装 |
+| Continue（`continue`） | exp | ⚪ 未安装（不伪造配置） | 宿主未安装 |
+| Gemini CLI（`gemini-cli`） | A | ✅ 已认证（装→调→卸→还原 四步） | gemini mcp list → 宿主自己报出 nexi；配置逐字节等于安装前 sha256=…（装前不存在，已把新建的文件删掉） |
+
+## Claude Desktop（`claude-desktop`）· 🟡 只验到配置层（宿主命令行不在本机，标「实验性」）
+
+· 配置文件：C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json
+  ✔ detect：C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json
+  ✔ snapshot：638 字符 sha256=c430fd52b52db503…
+  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T11-58-39-562Z-verify），本轮从干净配置开始
+  ✔ install：写入成功；备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T11-58-39-562Z-verify；sha256=c430fd52b52db503…
+  ✖ call：无法真调用：no-probe-command
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\AppData\Roaming\Claude\claude_desktop_config.json.nexi-backup-2026-11-06T11-58-39-562Z-verify）
+  ✔ restore：配置逐字节等于安装前 sha256=c430fd52b52db503…（顺序/空白有差，已用快照原样写回并复核）
+
+## Claude Code（`claude-code`）· ✅ 已认证（装→调→卸→还原 四步）
+
+· 配置文件：C:\Users\王冕\.claude.json
+  ✔ detect：C:\Users\王冕\.claude.json
+  ✔ snapshot：1768 字符 sha256=5c102fed3af69f07…
+  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T11-58-39-562Z-verify），本轮从干净配置开始
+  ✔ install：写入成功；备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T11-58-39-562Z-verify；sha256=5c102fed3af69f07…
+  ✔ call：claude mcp list → 宿主自己报出 nexi
+    ```
+    Checking MCP server health…
+    
+    nexi: C:\Users\王冕\Apps\nodejs\node.exe D:\agentdeck-super\bin\nexi.mjs mcp - √ Connected
+    ```
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.claude.json.nexi-backup-2026-11-06T11-58-39-562Z-verify）
+  ✔ restore：配置逐字节等于安装前 sha256=5c102fed3af69f07…（顺序/空白有差，已用快照原样写回并复核）
+
+## Cursor（`cursor`）· ⚪ 未安装（不伪造配置）
+
+· 配置文件：C:\Users\王冕\.cursor\mcp.json
+  ✖ detect：宿主未安装（找过：C:\Users\王冕\.cursor\mcp.json），不伪造配置
+
+## Windsurf（`windsurf`）· ⚪ 未安装（不伪造配置）
+
+· 配置文件：C:\Users\王冕\.codeium\windsurf\mcp_config.json
+  ✖ detect：宿主未安装（找过：C:\Users\王冕\.codeium\windsurf\mcp_config.json），不伪造配置
+
+## Codex（`codex`）· ✅ 已认证（装→调→卸→还原 四步）
+
+· 配置文件：C:\Users\王冕\.codex\config.toml
+  ✔ detect：C:\Users\王冕\.codex\config.toml
+  ✔ snapshot：4789 字符 sha256=dd3842ee8d442a70…
+  ✔ baseline：清掉上一轮残留的 nexi 条目（备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T11-58-39-562Z-verify），本轮从干净配置开始
+  ✔ install：写入成功；备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T11-58-39-562Z-verify；sha256=dd3842ee8d442a70…
+  ✔ call：codex mcp list → 宿主自己报出 nexi
+    ```
+    Name       Command                                                                                          Args                                                                                                                                                                                                                                                                          Env                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  Cwd                                                                                Status    Auth       
+    codex_app  cmd.exe                                                                                          /d /s /c call ./scripts/launch_codex_app_tools_mcp.cmd ./server.mjs                                                                                                                                                                                                           CODEX_APP_TOOLS_DEFERRED=*****, CODEX_APP_TOOLS_PIPE_PATH=*****, CODEX_MCP_NODE_PATH=*****, CODEX_BROWSER_USE_NODE_PATH=*****, CODEX_ELECTRON_RESOURCES_PATH=*****, CODEX_CLI_PATH=*****, XDG_CACHE_HOME=*****, HOME=*****, USERPROFILE=*****, LOCALAPPDATA=*****, PATH=*****                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        C:/Users/王冕/.codex/plugins/cache/openai-bundled/codex-app-tools/26.1029.61003      disabled  Unsupported
+    cua_repl   C:\Users\王冕\AppData\Local\OpenAI\Codex\runtimes\cua_node\9c26d707817e90a7\bin\node.exe           --import file:///C:/Users/%E7%8E%8B%E5%86%95/.codex/plugins/cache/openai-bundled/unified-computer-use/26.1029.61003/require-browser-access.mjs C:\Users\王冕\AppData\Local\OpenAI\Codex\runtimes\cua_node\9c26d707817e90a7\bin\node_modules\@oai\cua-repl\bin\cua-repl.mjs      BROWSER_USE_AVAILABLE_BACKENDS=*****, BROWSER_USE_CODEX_APP_BUILD_FLAVOR=*****, BROWSER_USE_CODEX_APP_VERSION=*****, BROWSER_USE_TINYSKY_ENABLED=*****, CODEX_CLI_PATH=*****, CODEX_HOME=*****, CUA_REPL_ENABLED_SURFACES=*****, CUA_REPL_NODE_REPL_PATH=*****, NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER=*****, NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME=*****, NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS=*****, NODE_REPL_NODE_MODULE_DIRS=*****, NODE_REPL_NODE_PATH=*****, NODE_REPL_TRUSTED_CODE_PATHS=*****, NODE_REPL_TRUSTED_SERVICES=*****, NODE_REPL_UNTRUSTED_ENV_ALLOWLIST=*****, SKY_CUA_NATIVE_PIPE=*****, SKY_CUA_NATIVE_PIPE_DIRECTORY=*****, BROWSER_USE_ACCESS_EXECUTOR_ID=*****, BROWSER_USE_ACCESS_PIPE_PATH=*****, BROWSER_USE_ACCESS_VERIFYING_IDENTITY=*****, CODEX_WINDOWS_REGISTERED_CORE=*****  -                                                                                  enabled   Unsupported
+    nexi       C:\Users\王冕\Apps\nodejs\node.exe                                                                 D:\agentdeck-super\bin\nexi.mjs mcp                                         
+    …（截断，共 6359 字符）
+    ```
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.codex\config.toml.nexi-backup-2026-11-06T11-58-39-562Z-verify）
+  ✔ restore：配置逐字节等于安装前 sha256=dd3842ee8d442a70…（顺序/空白有差，已用快照原样写回并复核）
+
+## Cline (VS Code)（`cline`）· ⚪ 未安装（不伪造配置）
+
+· 配置文件：C:\Users\王冕\AppData\Roaming\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json
+  ✖ detect：宿主未安装（找过：C:\Users\王冕\AppData\Roaming\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json），不伪造配置
+
+## Continue（`continue`）· ⚪ 未安装（不伪造配置）
+
+· 配置文件：C:\Users\王冕\.continue\config.json
+  ✖ detect：宿主未安装（找过：C:\Users\王冕\.continue\config.json），不伪造配置
+
+## Gemini CLI（`gemini-cli`）· ✅ 已认证（装→调→卸→还原 四步）
+
+· 配置文件：C:\Users\王冕\.gemini\settings.json
+  ✔ detect：C:\Users\王冕\.gemini\settings.json
+  ✔ snapshot：装前没有这个文件（首次使用才创建，属正常起点） sha256=（无）
+  ✔ baseline：安装前配置里没有 nexi，干净起点
+  ✔ install：写入成功；备份 无；sha256=23c9560ce6e1c573…
+  ✔ call：gemini mcp list → 宿主自己报出 nexi
+    ```
+    Warning: MCP servers are configured but disabled because this folder is untrusted.
+    User-level servers are also suppressed in untrusted folders to prevent accidental side-effects.
+    
+    Configured MCP servers:
+    
+    ○ nexi: C:\Users\王冕\Apps\nodejs\node.exe D:\agentdeck-super\bin\nexi.mjs mcp (stdio) - Disabled
+    ```
+  ✔ uninstall：nexi 条目已移除（备份 C:\Users\王冕\.gemini\settings.json.nexi-backup-2026-11-06T11-58-39-562Z-verify）
+  ✔ restore：配置逐字节等于安装前 sha256=…（装前不存在，已把新建的文件删掉）
+
