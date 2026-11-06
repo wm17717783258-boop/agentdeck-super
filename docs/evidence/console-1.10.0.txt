@@ -1,18 +1,18 @@
 Nexi 灵犀 —— 测试台（/deck/console）真宿主端到端
 版本：1.10.0
 被测包：.
-时间：2026-11-06T14:00:11.737Z
+时间：2026-11-06T14:16:41.718Z
 
 ① 正常模式：测试台能开、能点、点完盘上真的有东西
-   宿主已起，端口 50375
+   宿主已起，端口 50085
 ✔ GET /deck/console 出页面（200） —— HTTP 200，9429 字节
 ✔ 页面里有可点的按钮（测试台不是只读状态页） —— 有 submit 按钮
 ✔ 页面自报本机工具数（不写死） —— 本机工具 <b>21</b> 个
 ✔ 正常模式下没有动作被置灰 —— 全部可点
 ✔ 页面零外链（断网也开得起来） —— 无外部地址
 ✔ 点「建一个小组」→ 200 且回显原始返回 —— HTTP 200
-✔ 返回里带真小组 id（不是编的） —— team_c1f910ca2a
-✔ 点「加一条任务」→ 真写进去 —— task_d237af068a
+✔ 返回里带真小组 id（不是编的） —— team_f6b841f63e
+✔ 点「加一条任务」→ 真写进去 —— task_a5b632b848
 ✔ 点「统计」→ 看得到刚才那个组 —— Nexi 灵犀 · 测试台 body{font:15px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;mar…
 ✔ 盘上 state.json 存在 —— D:\demo\console\rw-board\state.json
 ✔ 盘上真有测试台建的小组 —— 1663 字节
@@ -22,7 +22,7 @@ Nexi 灵犀 —— 测试台（/deck/console）真宿主端到端
 ✔ 伪造的动作 id → 被拒（不猜、不静默执行） —— 拒绝
 
 ② 只读模式：写动作在服务端被拦（页面置灰只是提示，不是闸门）
-   宿主已起，端口 62383
+   宿主已起，端口 63904
 ✔ 只读模式下测试台照常打开 —— HTTP 200
 ✔ 页面上写动作已置灰并写明原因 —— 有 blocked
 ✔ 直连 POST 写动作 → 服务端拦住 —— Nexi 灵犀 · 测试台 body{font:15px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;padding:28px 2…
@@ -30,4 +30,4 @@ Nexi 灵犀 —— 测试台（/deck/console）真宿主端到端
 ✔ 只读模式下读动作照常可用 —— HTTP 200
 
 结论：全部通过（20/20）
-耗时：24.2s
+耗时：22.1s

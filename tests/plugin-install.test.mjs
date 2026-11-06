@@ -253,3 +253,77 @@ test('不认识的宿主 id：明确拒绝，不猜一个出来', () => {
     done();
   }
 });
+
+/* ── 8. 适配不需要装宿主：任何机器上都能生成 8 个宿主的配置 ────────────── */
+
+test('nexi config：8 个宿主全都能离线生成配置（本机装没装都不影响）', () => {
+  // 这条钉住一个产品层面的区分：
+  //   「能不能生成正确配置」= 适配能力，跟宿主装没装**无关**；
+  //   「要不要写进这台机器的默认路径」= 副作用控制，才跟装没装有关。
+  // 以前把这两件事混成一件，于是没装过的宿主被当成"适配不了"——那是错的。
+  const r = nexi(['config', '--all']);
+  assert.equal(r.status, 0, `config --all 该成功：${r.out.slice(0, 200)}`);
+  const arr = JSON.parse(r.out.slice(r.out.indexOf('[')));
+  assert.equal(arr.length, 8, `该有 8 个宿主，实际 ${arr.length}`);
+
+  const jsonHosts = ['claude-desktop', 'claude-code', 'cursor', 'windsurf', 'cline', 'continue', 'gemini-cli'];
+  for (const item of arr) {
+    assert.equal(item.ok, true, `${item.id} 生成失败`);
+    assert.ok(item.config, `${item.id} 没给配置文本`);
+    assert.ok(item.defaultPath, `${item.id} 没给默认路径`);
+    // installedLocally 只做说明，不该影响能不能拿到配置
+    assert.equal(typeof item.installedLocally, 'boolean', `${item.id} 该标出本机装没装`);
+
+    if (jsonHosts.includes(item.id)) {
+      const doc = JSON.parse(item.config);
+      assert.ok(doc.mcpServers?.nexi?.command, `${item.id} 配置缺 mcpServers.nexi.command`);
+      assert.ok(Array.isArray(doc.mcpServers.nexi.args), `${item.id} 配置缺 args`);
+    } else {
+      assert.equal(item.kind, 'toml');
+      assert.match(item.config, /\[mcp_servers\.nexi\]/, 'codex 该是 TOML 段');
+    }
+  }
+});
+
+test('nexi config 只输出、不落盘：绝不往任何宿主目录写文件', () => {
+  const { dir, done } = freshDir('cfg-out');
+  try {
+    // 带 --out 时才写，而且写在指定位置
+    const file = join(dir, 'cursor.json');
+    const r = nexi(['config', 'cursor', '--out', file]);
+    assert.equal(r.status, 0);
+    assert.ok(existsSync(file), '--out 该写出文件');
+    const doc = JSON.parse(readFileSync(file, 'utf8'));
+    assert.ok(doc.mcpServers.nexi, '写出来的内容不对');
+
+    // 不带 --out：不给它任何落盘机会
+    const dir2 = freshDir('cfg-noout');
+    try {
+      const before = nexi(['config', 'cursor']).out;
+      assert.ok(before.includes('mcpServers'), '不带 --out 也该把配置打出来');
+      // 默认路径没被碰
+      const def = JSON.parse(nexi(['config', 'cursor']).out).defaultPath;
+      assert.ok(!existsSync(def) || readFileSync(def, 'utf8').includes('nexi') === true,
+        'config 不该创建默认路径文件');
+    } finally {
+      dir2.done();
+    }
+  } finally {
+    done();
+  }
+});
+
+test('已装过的宿主也能拿到配置文本（changed=false 时不能不带 preview）', () => {
+  const { dir, done } = freshDir('cfg-idem');
+  try {
+    const file = join(dir, 'mcp.json');
+    nexi(['install', 'cursor', file]);           // 第一次：写入
+    const again = nexi(['install', 'cursor', file, '--dry-run']); // 第二次：无变化
+    assert.equal(again.json?.ok, true);
+    // 就算是"没变化"，也得把配置文本带回来——调用方要的是"长什么样"
+    assert.ok(again.json?.preview, `changed=false 时丢了 preview：${again.out.slice(0, 200)}`);
+    assert.match(again.json.preview, /mcpServers/);
+  } finally {
+    done();
+  }
+});

@@ -15,6 +15,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,16 +37,30 @@ function print(obj) {
   process.stdout.write(`${typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)}\n`);
 }
 
+/** 取值型开关：`--out <路径>` / `--out=<路径>` 两种写法都认。 */
+const VALUE_FLAGS = { out: 'out' };
+
 function parseFlags(args) {
   const flags = { _: [] };
-  for (const a of args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
     if (a === '--all') flags.all = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--force') flags.force = true;
     else if (a === '--json') flags.json = true;
     else if (a === '--record') flags.record = true;
     else if (a === '--read-only' || a === '--readonly') flags.readOnly = true;
-    else flags._.push(a);
+    else if (typeof a === 'string' && a.startsWith('--') && VALUE_FLAGS[a.slice(2).split('=')[0]]) {
+      // 取值型开关必须吃掉后面的值，不能把它当成位置参数——
+      // 以前这里没处理，`--out x` 的 x 会掉进 flags._，调用方拿不到，路径就被静默丢掉了。
+      const [name, inline] = a.slice(2).split('=');
+      const key = VALUE_FLAGS[name];
+      if (inline !== undefined) flags[key] = inline;
+      else if (i + 1 < args.length && !String(args[i + 1]).startsWith('--')) {
+        flags[key] = args[i + 1];
+        i += 1;
+      } else flags[key] = true;
+    } else flags._.push(a);
   }
   return flags;
 }
@@ -132,24 +147,34 @@ async function cmdInstall() {
     print({ hint: 'nexi install <host-id> 或 --all', hosts: hosts.map((h) => ({ id: h.id, label: h.label, installed: h.installed, path: h.path })) });
     return 0;
   }
-  // 目标文件从哪来，优先级写清楚（以前这里只认环境变量，命令行传的路径会被**静默丢掉**，
-  // 结果就是"我明明指了别的文件，它却写了宿主真实配置"——真机上踩过，还污染了 4 个用户目录）：
+  // 目标文件从哪来，优先级（以前这里只认环境变量，命令行传的路径会被静默丢掉）：
   //   ① 命令行显式给的路径（第 2 个位置参数）
   //   ② 环境变量 NEXI_HOST_CONFIG
   //   ③ 宿主默认路径
-  // 另外：宿主没装时，除非显式指定路径或加 --force，**不许**往它默认路径写配置——
-  // 没装的宿主就该保持没装，不能因为我们install一下就在用户机器上留个文件。
   const explicit = typeof flags._[1] === 'string' && flags._[1].trim() ? flags._[1].trim() : '';
   const targetPath = explicit || process.env.NEXI_HOST_CONFIG || undefined;
-  if (!targetPath && !opts.force) {
+
+  // 「能不能生成正确配置」和「该不该写这台机器的默认路径」是两件事，不要混：
+  //   · 适配能力跟宿装没装**无关**——我们知道它的配置格式就能生成（这才是插件要做的）；
+  //   · 但没装的宿主，不该默默往它默认路径塞文件（副作用控制）。
+  // 所以：显式给了路径 / 加了 --force / dry-run → 照常生成，不拦；
+  // 只有"没装 + 没给路径 + 要真写"才拒绝，并告诉人怎么继续。
+  if (!targetPath && !opts.force && !opts.dryRun) {
     const found = detectHosts().find((h) => h.id === target);
     if (found && !found.installed) {
       print({
         ok: false,
         code: 'host_not_installed',
         id: target,
-        hint: `本机没装 ${found.label}，不往它的默认路径写配置。要真装请二者之一：① 显式给路径 nexi install ${target} <文件路径>；② 确认要写默认路径再加 --force。`,
+        hint: `本机没装 ${found.label}，不往它的默认路径写配置（免得在没装的宿主目录里留文件）。`
+          + `想看/取这份配置：加 --dry-run 拿预览，或显式给路径 nexi install ${target} <文件路径>；`
+          + `确认要写默认路径就加 --force。`,
         wouldWrite: found.path,
+        // 直接给出配置内容：适配不需要装宿主，用户（或别的脚本）拿着就能用
+        preview: (() => {
+          const r = installHost(target, { ...opts, path: found.path, dryRun: true });
+          return r.ok ? r.preview : null;
+        })(),
       });
       return 1;
     }
@@ -260,6 +285,68 @@ async function cmdDeny() {
  * 不装 Electron：用本机自带 Edge/Chrome 的 --app 窗口，无地址栏、无标签页。
  * 转调 bin/nexi-pet.mjs，参数原样透传（--size/--corner/--state/--port/--out/--print）。
  */
+/**
+ * nexi config [host|--all] —— 直接给出接入配置，**不需要装那个宿主**。
+ *
+ * 这是"插件适配"的正解：适配靠的是知道宿主的配置格式，不是把宿主装到本机。
+ * 8 个宿主的配置形状我们自己维护、有测试钉着，所以任何一台机器上都能生成。
+ *
+ * 输出可直接粘进宿主配置文件；也可以 --out <路径> 写出来。
+ * dry-run 语义：本命令**默认就是只输出**，不写任何宿主目录。
+ */
+async function cmdConfig() {
+  const flags = parseFlags(rest);
+  const out = typeof flags.out === 'string' ? flags.out : '';
+  const wantAll = flags.all === true;
+  const ids = wantAll ? HOSTS.map((h) => h.id) : [flags._[0]].filter(Boolean);
+  if (!ids.length) {
+    print({
+      hint: 'nexi config <host-id> 或 --all；给出该宿主的 MCP 接入配置（不用装宿主）。',
+      hosts: HOSTS.map((h) => ({ id: h.id, label: h.label, kind: h.kind, defaultPath: h.paths()[0] })),
+    });
+    return 0;
+  }
+
+  const results = [];
+  for (const id of ids) {
+    const host = HOSTS.find((h) => h.id === id);
+    if (!host) {
+      results.push({ id, ok: false, reason: `不认识宿主：${id}` });
+      continue;
+    }
+    // 关键：用 dry-run 拿配置文本，绝不落盘到宿主目录
+    const r = installHost(id, { dryRun: true, force: true });
+    if (!r.ok) {
+      results.push({ id, label: host.label, ok: false, reason: r.reason || '生成失败', warnings: r.warnings });
+      continue;
+    }
+    const rec = {
+      id,
+      label: host.label,
+      kind: host.kind,
+      ok: true,
+      defaultPath: host.paths()[0],
+      // 本机装没装，只影响"要不要顺手写进去"，不影响能不能生成
+      installedLocally: detectHosts().find((h) => h.id === id)?.installed === true,
+      config: r.preview,
+    };
+    // 显式要写文件才写（--out），否则只打印
+    if (out) {
+      const file = ids.length > 1 ? out.replace(/\.json$|\.toml$/i, '') + `-${id}` + (host.kind === 'toml' ? '.toml' : '.json') : out;
+      try {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, r.preview, 'utf8');
+        rec.writtenTo = file;
+      } catch (err) {
+        rec.writeError = String(err?.message || err);
+      }
+    }
+    results.push(rec);
+  }
+  print(wantAll ? results : results[0]);
+  return results.every((r) => r.ok) ? 0 : 1;
+}
+
 async function cmdPet() {
   const cli = join(dirname(fileURLToPath(import.meta.url)), 'nexi-pet.mjs');
   const passthrough = rest.filter((a) => typeof a === 'string');
@@ -340,6 +427,7 @@ const table = {
   approve: cmdApprove,
   deny: cmdDeny,
   pet: cmdPet,
+  config: cmdConfig,
   help,
   '--help': help,
   '-h': help,
