@@ -26,6 +26,7 @@
  */
 
 import { createServer } from 'node:http';
+import { createServer as createSecureServer } from 'node:https';
 import { createPublicKey, verify as cryptoVerify, randomUUID, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -239,7 +240,7 @@ export async function startRelayServer(opts = {}) {
     return { room, seat };
   }
 
-  const server = createServer(async (req, res) => {
+  const handler = async (req, res) => {
     const url = new URL(req.url || '/', 'http://relay.local');
     const p = url.pathname.replace(/\/+$/, '') || '/';
     try {
@@ -443,7 +444,7 @@ export async function startRelayServer(opts = {}) {
     } catch (err) {
       return send(res, 400, { error: err && err.message ? err.message : String(err), code: 'bad_request' });
     }
-  });
+  };
 
   function pushEvent(room, ev, fallbackSeatId = null) {
     const kind = String(ev && ev.kind ? ev.kind : 'unknown').slice(0, 40);
@@ -459,13 +460,32 @@ export async function startRelayServer(opts = {}) {
     return room.seq;
   }
 
+  // TLS：给了证书就起 HTTPS，否则起 HTTP。
+  // 为什么必须支持：公网部署不带 TLS 等于把房间内容裸奔在网络上。
+  // 以前只能在前面加一层反代，那对自建的用户来说是个额外门槛。
+  const tlsCert = opts.tlsCert || process.env.NEXI_RELAY_TLS_CERT || '';
+  const tlsKey = opts.tlsKey || process.env.NEXI_RELAY_TLS_KEY || '';
+  const useTls = Boolean(tlsCert && tlsKey);
+  let server;
+  if (useTls) {
+    const { readFileSync: rf } = await import('node:fs');
+    server = createSecureServer(
+      { cert: rf(resolve(String(tlsCert)), 'utf8'), key: rf(resolve(String(tlsKey)), 'utf8') },
+      handler,
+    );
+  } else {
+    server = createServer(handler);
+  }
+
   await new Promise((resolvePromise) => server.listen(opts.port ?? 0, opts.host ?? '127.0.0.1', resolvePromise));
   const port = server.address().port;
+  const scheme = useTls ? 'https' : 'http';
   return {
     // 注意：这里必须用 server.address().port —— 传 --port 0（自动挑端口）时，
     // opts.port 是 0，照着它拼 URL 会得到一个连不上的 http://127.0.0.1:0。
     // 调用方（测试脚本 / 启动脚本）都靠这个 url 去连，拼错就是死等。
-    url: `http://${opts.host || '127.0.0.1'}:${port}`,
+    url: `${scheme}://${opts.host || '127.0.0.1'}:${port}`,
+    tls: useTls,
     host: opts.host || '127.0.0.1',
     port,
     store,
@@ -491,7 +511,14 @@ if (isMain) {
   // 但默认值保持 127.0.0.1：不打招呼就把服务暴露到局域网/公网是危险的，
   // 想让别的电脑连，显式加 --host 0.0.0.0（CLI 会打印别的电脑该填哪个地址）。
   const host = arg('--host', '127.0.0.1');
-  const relay = await startRelayServer({ port, host, dataDir, quiet: false });
+  // 给了证书就起 HTTPS —— 公网部署必须带这个，否则内容在网络上是明文。
+  const tlsCert = arg('--tls-cert', '');
+  const tlsKey = arg('--tls-key', '');
+  if ((tlsCert && !tlsKey) || (!tlsCert && tlsKey)) {
+    console.error('--tls-cert 和 --tls-key 必须成对给（证书 + 私钥）。');
+    process.exit(1);
+  }
+  const relay = await startRelayServer({ port, host, dataDir, quiet: false, tlsCert, tlsKey });
   const shown = relay.url.replace('127.0.0.1', host === '0.0.0.0' ? '<本机IP>' : host);
   console.log(`AgentDeck Relay 已启动：${shown}`);
   console.log(`  监听：${host}:${relay.port}${host === '0.0.0.0' ? '（所有网卡，别的电脑用这台机器的 IP 访问）' : ''}`);

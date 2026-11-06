@@ -1,0 +1,50 @@
+支付适配器真机验证（照 Stripe 在线 API 形状应答的本地服务器）
+==================================================================
+时间：2026-11-06T18:10:26.347Z
+要验的是"代码路径对不对"，不是"Stripe 真扣没扣钱"——后者需要真 key。
+
+  ✅ billing 模块可加载
+【第 1 步】配置体检
+  ✅ health 报已配置 —— {"ok":true,"provider":"stripe","configured":true,"reason":"","hint":"","mode":"test","webhookConfigured":true,"webhookHi
+  ✅ provider 是 stripe
+  ✅ 没配 provider 时 health 如实报未配置
+  ✅ 未配置的原因说得清 —— 环境未配
+
+【第 2 步】发起支付（POST /v1/checkout/sessions）
+  ✅ 发起支付成功
+  ✅ 拿到了收银台 URL（用户点这个去付） —— https://checkout.stripe.com/c/pay/cs_test_local_1
+  ✅ 请求真的发到了 /v1/checkout/sessions
+  ✅ 用的是 POST —— POST
+  ✅ 带上了 Bearer 鉴权头 —— Bearer sk_test_local
+  ✅ Content-Type 是表单（Stripe 要这个） —— application/x-www-form-urlencoded
+  ✅ mode=payment —— payment
+  ✅ 金额按"分"传过去（Stripe 用最小货币单位） —— 1800
+  ✅ 币种 cny —— cny
+  ✅ 带上了 orderId（对账要用） —— ord_billingtest01
+
+【第 3 步】参数不齐时必须拒，不许发出半个请求
+  ✅ 缺回跳地址 → 拒绝 —— 缺少 successUrl / cancelUrl
+  ✅ 金额 0 → 拒绝 —— amount 必须是正整数分（整数、大于 0，例如 1999 表示 19.99 元）；收到 0
+  ✅ 这两次拒绝都没发出真请求（没浪费一次调用）
+
+【第 4 步】Webhook 验签（假的签名必须拒）
+  ✅ 真签名验过 —— {"ok":true,"provider":"stripe","signatureOk":true,"event":{"id":"evt_local_1","type":"checkout.sessi
+  ✅ 假签名拒绝 —— 签名不匹配（内容被篡改，或 webhookSecret 不对）
+  ✅ 改了内容签名就对不上 —— 签名不匹配（内容被篡改，或 webhookSecret 不对）
+
+【第 5 步】退款（POST /v1/refunds）
+  ✅ 退款成功
+  ✅ 请求发到了 /v1/refunds
+  ✅ 带上了原支付流水号（退对那笔） —— pi_test_local_1
+
+【第 6 步】渠道挂了必须如实失败，绝不许假装付款成功
+  ✅ 渠道连不上 → 结构化失败 —— 连不上支付网关
+  ✅ 没有把 paid 设成 true（这条最要紧）
+
+==================================================================
+结论：26 项通过，0 项失败
+
+边界（照写）：
+  · 验的是**代码路径**：请求打到哪、字段对不对、鉴权头有没有、失败怎么处理。
+  · **没有验**"Stripe 那边真扣了钱"——那需要真 key。所以门槛⑥仍然开着。
+  · 换成真 key 只改配置（AGENTDECK_PAY_PROVIDER / AGENTDECK_PAY_SECRET），代码一行不动。

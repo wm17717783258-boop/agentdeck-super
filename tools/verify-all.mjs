@@ -91,6 +91,12 @@ const SUITES = [
     optional: true,   // profile 里没装就能跳过，不算失败
   },
   {
+    id: 'billing-live',
+    what: '支付代码路径：照 Stripe 在线 API 形状应答，验请求/鉴权/字段/验签/退款/失败处理',
+    cmd: ['tools/verify-billing-live.mjs'],
+    evidence: [`billing-live-${ver}.txt`],
+  },
+  {
     id: 'everything',
     what: '全功能端到端：21 工具 / 94 动作 + 4 无动作工具，每个都走真实业务流并核对副作用',
     cmd: ['tools/verify-everything.mjs'],

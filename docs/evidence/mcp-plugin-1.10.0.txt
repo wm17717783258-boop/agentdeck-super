@@ -1,6 +1,6 @@
 插件测试方式 1：真 MCP 协议对话（别的 Agent 拿到插件后就是这么用的）
 ====================================================================
-时间：2026-11-06T17:48:34.601Z
+时间：2026-11-06T18:10:57.091Z
 做法：起真子进程 `node bin/nexi.mjs mcp`，走 stdio 的 JSON-RPC 2.0：
       initialize → tools/list → tools/call；协议版本、工具数、真调用都验。
 
@@ -23,10 +23,10 @@
 
 【第 3 步】真调用（tools/call）—— 挑典型的几个动作
   ✅ 读动作：deck_market catalog —— 【deck_market】货架 4 套（已拥有 3 · 在售 1）· 当前档位 free
-  ✅ 写动作：team_board create —— 【team_board】已创建小组 team_576b08d00b（MCP 测试组）
-  ✅ 分身记忆：twin_remember —— 【twin_remember】已记住：mem_mw59q7cc6iaj
+  ✅ 写动作：team_board create —— 【team_board】已创建小组 team_5ab3077d95（MCP 测试组）
+  ✅ 分身记忆：twin_remember —— 【twin_remember】已记住：mem_mw5aiz7o1389
   ✅ 召回读得回来（写→读闭环）
-  ✅ 串门邀请函生成 —— 【pet_visit】邀请函好了（只串门，2026-11-07 02:48 前有效） dsh://agentdeck/visit?t=eyJ2IjoyLCJra
+  ✅ 串门邀请函生成 —— 【pet_visit】邀请函好了（只串门，2026-11-07 03:10 前有效） dsh://agentdeck/visit?t=eyJ2IjoyLCJra
   ✅ 今日简报有内容
   ✅ 调不存在的工具 → 返回 JSON-RPC error（不是静默） —— -32602
   ✅ 不认识的方法 → -32601 —— -32601

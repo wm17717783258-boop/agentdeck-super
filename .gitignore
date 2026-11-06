@@ -27,3 +27,8 @@ desktop.ini
 # 证据与临时
 tmp/
 *.tmp
+
+# 自签证书与私钥（自己生成，绝不进仓库）
+certs/
+*.pem
+!assets/**/*.pem
