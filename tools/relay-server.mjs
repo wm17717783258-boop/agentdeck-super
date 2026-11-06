@@ -29,6 +29,7 @@ import { createServer } from 'node:http';
 import { createPublicKey, verify as cryptoVerify, randomUUID, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { networkInterfaces } from 'node:os';
 import { ISSUER_PUBLIC_SPKI_B64URL, verifyLicense, entitlements } from '../lib/license.js';
 
 const EVENT_LIMIT = 5000; // 单房间事件上限，超出丢弃最旧的（状态以最新为准）
@@ -461,7 +462,11 @@ export async function startRelayServer(opts = {}) {
   await new Promise((resolvePromise) => server.listen(opts.port ?? 0, opts.host ?? '127.0.0.1', resolvePromise));
   const port = server.address().port;
   return {
-    url: `http://127.0.0.1:${port}`,
+    // 注意：这里必须用 server.address().port —— 传 --port 0（自动挑端口）时，
+    // opts.port 是 0，照着它拼 URL 会得到一个连不上的 http://127.0.0.1:0。
+    // 调用方（测试脚本 / 启动脚本）都靠这个 url 去连，拼错就是死等。
+    url: `http://${opts.host || '127.0.0.1'}:${port}`,
+    host: opts.host || '127.0.0.1',
     port,
     store,
     close: () =>
@@ -481,10 +486,28 @@ if (isMain) {
   };
   const port = Number(arg('--port', 8787));
   const dataDir = arg('--data', '.relay-data');
-  const relay = await startRelayServer({ port, dataDir, quiet: false });
-  console.log(`AgentDeck Relay 已启动：${relay.url}`);
+  // 关键：**必须能绑到对外的地址**，否则这个 relay 只能本机访问，
+  // "不同电脑之间协作"就根本无从谈起。
+  // 但默认值保持 127.0.0.1：不打招呼就把服务暴露到局域网/公网是危险的，
+  // 想让别的电脑连，显式加 --host 0.0.0.0（CLI 会打印别的电脑该填哪个地址）。
+  const host = arg('--host', '127.0.0.1');
+  const relay = await startRelayServer({ port, host, dataDir, quiet: false });
+  const shown = relay.url.replace('127.0.0.1', host === '0.0.0.0' ? '<本机IP>' : host);
+  console.log(`AgentDeck Relay 已启动：${shown}`);
+  console.log(`  监听：${host}:${relay.port}${host === '0.0.0.0' ? '（所有网卡，别的电脑用这台机器的 IP 访问）' : ''}`);
   console.log(`  房间数据目录：${resolve(dataDir)}`);
   console.log('  建房间需要授权码；进房间凭邀请，不需要授权。Ctrl+C 停止。');
+  if (host === '0.0.0.0') {
+    const nets = networkInterfaces();
+    for (const list of Object.values(nets)) {
+      for (const i of list || []) {
+        if (i.family === 'IPv4' && !i.internal) {
+          console.log(`  → 别的电脑填这个：http://${i.address}:${relay.port}`);
+        }
+      }
+    }
+    console.log('  ⚠️ 公网部署务必放在 HTTPS 反代后面（relay 自己只讲 HTTP）。');
+  }
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, async () => {
       console.log('\n正在关闭…');

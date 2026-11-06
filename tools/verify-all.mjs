@@ -91,6 +91,13 @@ const SUITES = [
     optional: true,   // profile 里没装就能跳过，不算失败
   },
   {
+    id: 'crosshost',
+    what: '跨机协作：两台机器 / 两个用户 / 走真实网络（relay → 建房间 → 进房 → 双向消息 → 重启后还在）',
+    cmd: ['tools/verify-crosshost.mjs'],
+    evidence: [`crosshost-${ver}.txt`],
+    slow: true,
+  },
+  {
     id: 'mcp-plugin',
     what: '插件核心验收：真 MCP 协议对话（initialize → tools/list → tools/call → 只读模式），不需要装宿主',
     cmd: ['tools/verify-mcp-plugin.mjs'],
