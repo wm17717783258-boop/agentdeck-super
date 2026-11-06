@@ -49,6 +49,7 @@ function parseFlags(args) {
     else if (a === '--force') flags.force = true;
     else if (a === '--json') flags.json = true;
     else if (a === '--record') flags.record = true;
+    else if (a === '--portable') flags.portable = true;
     else if (a === '--read-only' || a === '--readonly') flags.readOnly = true;
     else if (typeof a === 'string' && a.startsWith('--') && VALUE_FLAGS[a.slice(2).split('=')[0]]) {
       // 取值型开关必须吃掉后面的值，不能把它当成位置参数——
@@ -135,7 +136,9 @@ async function cmdCall() {
 
 async function cmdInstall() {
   const flags = parseFlags(rest);
-  const opts = { dryRun: flags.dryRun, force: flags.force };
+  // --portable：配置里写裸 `node` 而不是本机 node 的绝对路径。
+  // 什么时候用：这份配置要被拷到别的电脑、或者你不知道对面 node 装在哪。
+  const opts = { dryRun: flags.dryRun, force: flags.force, portable: flags.portable === true };
   if (flags.all) {
     const results = installAll(opts);
     print(results);

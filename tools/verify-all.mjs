@@ -91,6 +91,12 @@ const SUITES = [
     optional: true,   // profile 里没装就能跳过，不算失败
   },
   {
+    id: 'portable',
+    what: '可移植：把包解到别处，照它写出的宿主配置真起一次服务（证明拷到别的电脑能用）',
+    cmd: ['tools/verify-portable.mjs'],
+    evidence: [],
+  },
+  {
     id: 'billing-live',
     what: '支付代码路径：照 Stripe 在线 API 形状应答，验请求/鉴权/字段/验签/退款/失败处理',
     cmd: ['tools/verify-billing-live.mjs'],

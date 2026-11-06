@@ -23,6 +23,7 @@
     "assets",
     "docs",
     "cordis.patch.yml",
+    "install.mjs",
     "README.md",
     "README.zh.md",
     "SECURITY.md",
