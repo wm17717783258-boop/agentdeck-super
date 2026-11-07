@@ -91,6 +91,13 @@ const SUITES = [
     optional: true,   // profile 里没装就能跳过，不算失败
   },
   {
+    id: 'twomachines',
+    what: '两台电脑开箱：各自解包安装 → 建房间 → 进房 → 双向消息 → 派活 → relay 重启后还在 → 串门加密便签',
+    cmd: ['tools/verify-twomachines.mjs'],
+    evidence: [`twomachines-${ver}.txt`],
+    slow: true,
+  },
+  {
     id: 'portable',
     what: '可移植：把包解到别处，照它写出的宿主配置真起一次服务（证明拷到别的电脑能用）',
     cmd: ['tools/verify-portable.mjs'],

@@ -38,7 +38,7 @@ function print(obj) {
 }
 
 /** 取值型开关：`--out <路径>` / `--out=<路径>` 两种写法都认。 */
-const VALUE_FLAGS = { out: 'out' };
+const VALUE_FLAGS = { out: 'out', host: 'host', data: 'data', 'tls-cert': 'tlsCert', 'tls-key': 'tlsKey' };
 
 function parseFlags(args) {
   const flags = { _: [] };
@@ -350,6 +350,51 @@ async function cmdConfig() {
   return results.every((r) => r.ok) ? 0 : 1;
 }
 
+/**
+ * nexi relay —— 起跨机中继服务器（别的电脑靠它协作）。
+ *
+ * 为什么做进 CLI：跨机测试要给用户"一条命令起服务器"。
+ * 以前 relay-server.mjs 在 tools/ 下、依赖仓库结构，单拷一个文件跑不起来。
+ * 放进 CLI 之后，装了包的任何一台电脑都能直接起。
+ */
+async function cmdRelay() {
+  const flags = parseFlags(rest);
+  const port = Number(flags._[0] || 8787);
+  const host = typeof flags.host === 'string' ? flags.host : '0.0.0.0';
+  const tlsCert = typeof flags.tlsCert === 'string' ? flags.tlsCert : '';
+  const tlsKey = typeof flags.tlsKey === 'string' ? flags.tlsKey : '';
+  const dataDir = typeof flags.data === 'string' ? flags.data : '';
+
+  if ((tlsCert && !tlsKey) || (!tlsCert && tlsKey)) {
+    log('--tls-cert 和 --tls-key 必须成对给（证书 + 私钥）。');
+    return 1;
+  }
+
+  const { startRelayServer } = await import('../tools/relay-server.mjs');
+  const relay = await startRelayServer({
+    port, host, quiet: false,
+    ...(dataDir ? { dataDir } : {}),
+    ...(tlsCert ? { tlsCert, tlsKey } : {}),
+  });
+  const scheme = tlsCert ? 'https' : 'http';
+  log(`relay 已启动：${scheme}://${host}:${relay.port}`);
+  if (host === '0.0.0.0') {
+    const nets = await import('node:os');
+    for (const list of Object.values(nets.networkInterfaces())) {
+      for (const i of list || []) {
+        if (i.family === 'IPv4' && !i.internal) log(`  别的电脑填这个：${scheme}://${i.address}:${relay.port}`);
+      }
+    }
+  }
+  log('  建房间要授权码（协作版起）；进房间凭邀请，不需要授权。Ctrl+C 停止。');
+  await new Promise((done) => {
+    const stop = async () => { await relay.close(); done(); };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+  });
+  return 0;
+}
+
 async function cmdPet() {
   const cli = join(dirname(fileURLToPath(import.meta.url)), 'nexi-pet.mjs');
   const passthrough = rest.filter((a) => typeof a === 'string');
@@ -431,6 +476,7 @@ const table = {
   deny: cmdDeny,
   pet: cmdPet,
   config: cmdConfig,
+  relay: cmdRelay,
   help,
   '--help': help,
   '-h': help,
