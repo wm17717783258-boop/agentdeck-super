@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="{{size}}" height="{{size}}" viewBox="0 0 160 160" role="img" aria-label="{{name}}：{{stateLabel}}" data-skin="ink" data-state="{{state}}">
+  <title>{{name}} · {{stateLabel}}</title>
+  <desc>AgentDeck 内置免费皮肤「水墨」：宣纸上的墨点小兽，当前状态 {{stateLabel}}</desc>
+  <defs>
+    <linearGradient id="ink-bg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#f8f3e8"/>
+      <stop offset="1" stop-color="#eae1cf"/>
+    </linearGradient>
+    <radialGradient id="ink-wash" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2b2722" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#2b2722" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="ink-frame">
+      <rect x="3" y="3" width="154" height="154" rx="34"/>
+    </clipPath>
+  </defs>
+  <style>
+    .state { display: none; }
+    [data-state="idle"] .s-idle,
+    [data-state="working"] .s-working,
+    [data-state="meeting"] .s-meeting,
+    [data-state="visiting"] .s-visiting,
+    [data-state="sleeping"] .s-sleeping { display: inline; }
+    .eye-open { display: inline; }
+    .eye-closed { display: none; }
+    [data-state="sleeping"] .eye-open { display: none; }
+    [data-state="sleeping"] .eye-closed { display: inline; }
+    .label { font: 600 12px/1 "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; fill: {{accent}}; letter-spacing: 0.16em; }
+  </style>
+  <g clip-path="url(#ink-frame)">
+    <rect x="0" y="0" width="160" height="160" fill="url(#ink-bg)"/>
+    <circle cx="118" cy="34" r="30" fill="url(#ink-wash)"/>
+    <circle cx="36" cy="122" r="26" fill="url(#ink-wash)"/>
+    <path d="M24 148 q18 -6 34 0 q16 6 30 0 q16 -6 30 0" fill="none" stroke="#2b2722" stroke-width="2" opacity="0.16"/>
+    <ellipse cx="80" cy="138" rx="40" ry="7" fill="#2b2722" opacity="0.12"/>
+    <path d="M55 47 q-9 -14 2 -19 q9 -4 12 10 z" fill="#2b2722" opacity="0.86"/>
+    <path d="M105 47 q9 -14 -2 -19 q-9 -4 -12 10 z" fill="#2b2722" opacity="0.86"/>
+    <ellipse cx="80" cy="106" rx="41" ry="32" fill="#2b2722" opacity="0.72"/>
+    <ellipse cx="80" cy="104" rx="25" ry="17" fill="#f8f3e8" opacity="0.34"/>
+    <circle cx="80" cy="71" r="32" fill="#2b2722" opacity="0.86"/>
+    <path d="M60 62 q7 -9 14 -1 q-7 6 -14 1 z" fill="#f8f3e8" opacity="0.9"/>
+    <path d="M100 62 q-7 -9 -14 -1 q7 6 14 1 z" fill="#f8f3e8" opacity="0.9"/>
+    <g class="eye-open">
+      <circle cx="69" cy="70" r="3.4" fill="#2b2722"/>
+      <circle cx="91" cy="70" r="3.4" fill="#2b2722"/>
+      <circle cx="68.2" cy="69.2" r="1.1" fill="#f8f3e8"/>
+      <circle cx="90.2" cy="69.2" r="1.1" fill="#f8f3e8"/>
+    </g>
+    <g class="eye-closed">
+      <path d="M64 71 q5 4 10 0" fill="none" stroke="#f8f3e8" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M86 71 q5 4 10 0" fill="none" stroke="#f8f3e8" stroke-width="2.6" stroke-linecap="round"/>
+    </g>
+    <circle cx="59" cy="80" r="6" fill="{{accent}}" opacity="0.28"/>
+    <circle cx="101" cy="80" r="6" fill="{{accent}}" opacity="0.28"/>
+    <path d="M76 83 q4 3 8 0" fill="none" stroke="#f8f3e8" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+    <path d="M72 112 q8 5 16 0" fill="none" stroke="#f8f3e8" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
+    <path d="M108 108 q16 -6 12 -22 q-3 -12 -14 -10" fill="none" stroke="#2b2722" stroke-width="7" stroke-linecap="round" opacity="0.5"/>
+    <rect x="118" y="112" width="24" height="24" rx="3" fill="none" stroke="{{accent}}" stroke-width="2.4"/>
+    <text x="130" y="130" text-anchor="middle" font-family="Microsoft YaHei, PingFang SC, serif" font-size="14" font-weight="700" fill="{{accent}}">墨</text>
+    <g class="state s-idle">
+      <circle cx="124" cy="52" r="3.4" fill="#2b2722" opacity="0.28"/>
+      <circle cx="132" cy="64" r="2" fill="#2b2722" opacity="0.22"/>
+      <path d="M30 52 q8 -6 14 2" fill="none" stroke="#2b2722" stroke-width="1.8" stroke-linecap="round" opacity="0.24"/>
+    </g>
+    <g class="state s-working">
+      <path d="M112 44 l26 -14 l6 10 l-26 14 z" fill="#2b2722" opacity="0.8"/>
+      <path d="M118 56 l-4 10 l10 -5 z" fill="#2b2722" opacity="0.55"/>
+      <path d="M28 118 h36" stroke="#2b2722" stroke-width="2.4" stroke-linecap="round" opacity="0.5"/>
+      <path d="M28 126 h22" stroke="{{accent}}" stroke-width="2.4" stroke-linecap="round" opacity="0.8"/>
+    </g>
+    <g class="state s-meeting">
+      <path d="M24 30 h34 v22 h-18 l-8 8 v-8 h-8 z" fill="none" stroke="#2b2722" stroke-width="2.2" stroke-linejoin="round" opacity="0.8"/>
+      <path d="M31 39 h20 M31 45 h13" stroke="#2b2722" stroke-width="1.8" stroke-linecap="round" opacity="0.6"/>
+      <path d="M136 30 h-30 v20 h16 l8 8 v-8 h6 z" fill="none" stroke="{{accent}}" stroke-width="2.2" stroke-linejoin="round" opacity="0.85"/>
+      <path d="M114 39 h16 M114 45 h10" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+    </g>
+    <g class="state s-visiting">
+      <path d="M104 34 h32 v22 h-32 z" fill="none" stroke="#2b2722" stroke-width="2.2" stroke-linejoin="round" opacity="0.8"/>
+      <path d="M104 35 l16 12 l16 -12" fill="none" stroke="#2b2722" stroke-width="2.2" stroke-linejoin="round" opacity="0.8"/>
+      <path d="M34 128 q8 -8 16 0 q-8 8 -16 0 z" fill="#2b2722" opacity="0.35"/>
+      <path d="M52 132 q8 -6 14 0" fill="none" stroke="#2b2722" stroke-width="1.8" stroke-linecap="round" opacity="0.25"/>
+    </g>
+    <g class="state s-sleeping">
+      <path d="M112 30 a15 15 0 1 0 0 22 a12 12 0 0 1 0 -22 z" fill="#2b2722" opacity="0.35"/>
+      <text x="120" y="62" font-family="Microsoft YaHei, serif" font-size="16" font-weight="700" fill="#2b2722" opacity="0.45">z</text>
+      <text x="132" y="52" font-family="Microsoft YaHei, serif" font-size="11" font-weight="700" fill="#2b2722" opacity="0.3">z</text>
+    </g>
+    <text class="label" x="80" y="152" text-anchor="middle">{{stateLabel}}</text>
+  </g>
+</svg>

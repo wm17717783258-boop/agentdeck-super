@@ -1,0 +1,14 @@
+{
+  "id": "starter",
+  "name": "入门三件套",
+  "priceCents": 0,
+  "license": "free",
+  "author": "AgentDeck 官方",
+  "version": "1.0.0",
+  "description": "免费包里把三套基础皮肤一次带走：原味、霓虹、水墨。新用户先用这个。",
+  "skins": ["basic", "nio", "ink"],
+  "sounds": [],
+  "actions": ["idle", "working"],
+  "separateCents": 0,
+  "accent": "#8b7cff"
+}

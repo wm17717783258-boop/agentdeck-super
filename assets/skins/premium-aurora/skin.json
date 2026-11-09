@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "premium-aurora",
+  "name": "极光",
+  "price": 18,
+  "license": "premium",
+  "sprite": "sprite.svg",
+  "accent": "#7ef3ff",
+  "author": "AgentDeck 官方",
+  "version": "1.0.0",
+  "description": "付费皮肤示例：极光渐层 + 星屑尾迹。免费版可用「原味 / 霓虹 / 水墨」三套，这一套需要授权。"
+}

@@ -1,0 +1,115 @@
+{
+  "name": "agentdeck-super",
+  "version": "1.11.8",
+  "mcpName": "io.github.wm17717783258-boop/agentdeck-super",
+  "description": "Nexi 灵犀：超级 Agent + 多 Agent 小组协作 + MCP 网关。一个会自己干活的 Agent，能把本机 CLI、ACP、OpenAI 兼容、桌面 App、自研桥接的多类 Agent 编成小组，并用一条命令把同一套能力接进 Claude/Cursor/Codex 等宿主。",
+  "type": "module",
+  "main": "lib/index.js",
+  "icon": "assets/logo.png",
+  "exports": {
+    ".": "./lib/index.js",
+    "./engine/*": "./lib/engine/*",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./hub": "./lib/hub.js",
+    "./mcp": "./lib/mcp/server.js",
+    "./connect/*": "./lib/connect/*"
+  },
+  "files": [
+    "LICENSING.md",
+    "licenses",
+    "lib",
+    "bin",
+    "tools",
+    "assets",
+    "docs",
+    "!docs/evidence",
+    "tests",
+    "!tests/fixtures/**/node_modules",
+    "cordis.patch.yml",
+    "install.mjs",
+    "server.json",
+    "README.md",
+    "README.zh.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node tools/test-summary.mjs",
+    "dev": "node tools/dev.mjs",
+    "dev:fast": "node tools/dev.mjs --fast",
+    "smoke": "node tests/e2e-local.mjs",
+    "relay": "node tools/relay-server.mjs --port 8787",
+    "license": "node tools/license-cli.mjs",
+    "release": "node tools/release.mjs",
+    "release:publish": "node tools/release.mjs --publish",
+    "redact": "node tools/redact.mjs --apply",
+    "pack:check": "node tools/pack-clean.mjs",
+    "publish:check": "node tools/publish-npm.mjs",
+    "verify:passport": "node tools/verify-passport.mjs --pkg .",
+    "verify:readonly": "node tools/verify-readonly.mjs",
+    "verify:recovery": "node tools/verify-recovery.mjs --pkg .",
+    "verify:console": "node tools/verify-console.mjs --pkg .",
+    "verify:mcp-http": "node tools/verify-mcp-http.mjs",
+    "verify:pay": "node tools/verify-pay.mjs",
+    "verify:security": "node tools/verify-security.mjs",
+    "verify:all": "node tools/verify-all.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "agent",
+    "multi-agent",
+    "orchestration",
+    "agentdeck",
+    "agent-team",
+    "collaboration",
+    "claude",
+    "codex",
+    "gemini",
+    "pet",
+    "room"
+  ],
+  "author": "王冕 (Wang Mian)",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.1.7-rc.2": "incompatible",
+        "0.2.0-rc.1": "unknown",
+        "0.2.0-rc.2": "unknown",
+        "0.2.1-rc.2": "compatible",
+        "0.2.1-rc.5": "compatible"
+      }
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    }
+  },
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wm17717783258-boop/agentdeck-super.git"
+  },
+  "homepage": "https://github.com/wm17717783258-boop/agentdeck-super#readme",
+  "bugs": {
+    "url": "https://github.com/wm17717783258-boop/agentdeck-super/issues"
+  },
+  "bin": {
+    "agentdeck-super": "install.mjs",
+    "nexi": "bin/nexi.mjs",
+    "nexi-pair": "tools/nexi-pair.mjs",
+    "nexi-pet": "bin/nexi-pet.mjs"
+  }
+}

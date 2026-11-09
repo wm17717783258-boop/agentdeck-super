@@ -1,0 +1,49 @@
+name: Bug 报告
+description: 某个功能不工作 / 报错 / 结果不对
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先跑这两条，把输出贴进来，能省掉一半来回：
+        ```bash
+        node tests/e2e-local.mjs
+        node tools/real-agents-check.mjs --timeout 300
+        ```
+  - type: input
+    id: version
+    attributes:
+      label: 插件版本
+      placeholder: agentdeck-super 1.4.0
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: Windows 11 · Node 24.15.0 · DSH 0.2.1-rc.5
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 输入 /deck room create 测试
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果 / 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错原文
+      render: text
+    validations:
+      required: false

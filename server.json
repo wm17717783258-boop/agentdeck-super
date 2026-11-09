@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.wm17717783258-boop/agentdeck-super",
+  "title": "Nexi 灵犀",
+  "description": "Multi-agent team + shared memory + cross-machine rooms for any MCP host (Claude/Codex/Cursor...).",
+  "repository": {
+    "url": "https://github.com/wm17717783258-boop/agentdeck-super",
+    "source": "github"
+  },
+  "version": "1.11.5",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "agentdeck-super",
+      "version": "1.11.5",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
