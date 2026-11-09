@@ -78,6 +78,7 @@ const SUITES = [
     cmd: ['pro/tools/verify-pay.mjs'],
     evidence: [`pay-${ver}.txt`],
     optional: true,   // 支付适配器属闭源商业层（pro/），没装 pro 就跳过
+    ifPro: true,      // 装了 pro 就必须跑：收款链路坏了却默认跳过，等于没验
   },
   {
     id: 'visit',
@@ -91,6 +92,7 @@ const SUITES = [
     cmd: ['pro/tools/verify-meeting.mjs'],
     evidence: [`meeting-3agent-${ver}.txt`],
     optional: true,   // 云端会议属闭源商业层（pro/）
+    ifPro: true,
   },
   {
     id: 'installed',
@@ -125,6 +127,7 @@ const SUITES = [
     cmd: ['pro/tools/verify-billing-live.mjs'],
     evidence: [`billing-live-${ver}.txt`],
     optional: true,   // 支付渠道适配属闭源商业层（pro/）
+    ifPro: true,
   },
   {
     id: 'everything',
@@ -188,12 +191,26 @@ const only = (() => {
 })();
 
 if (argv.includes('--list')) {
+  const proHere = existsSync(join(PKG, 'pro', 'package.json'));
   console.log('可跑的验收：');
-  for (const s of SUITES) console.log(`  ${s.id.padEnd(10)} ${s.what}${s.optional ? '（可选，默认跳过）' : ''}`);
+  for (const s of SUITES) {
+    let tag = '';
+    if (s.optional) tag = s.ifPro === true && proHere ? '（装了商业层，默认会跑）' : '（可选，默认跳过）';
+    console.log(`  ${s.id.padEnd(12)} ${s.what}${tag}`);
+  }
   process.exit(0);
 }
 
-const picked = SUITES.filter((s) => (only ? only.includes(s.id) : !s.optional));
+/*
+ * 选取规则：
+ *   · 默认只跑非 optional 的；
+ *   · 但 ifPro 的那些（收款 / 会议 / 渠道实测）只要盘上有 pro/ 就必须跑 ——
+ *     这三条是最贴着"钱"的验收，坏了却默认跳过，等于没验
+ *     （1.11.9 自检时就这么漏过一次：市场代码搬家后 pro/tools/verify-pay.mjs
+ *      还在 import 已经删掉的文件，verify-all 全绿，收款验收根本起不来）。
+ */
+const hasPro = existsSync(join(PKG, 'pro', 'package.json'));
+const picked = SUITES.filter((s) => (only ? only.includes(s.id) : (!s.optional || (s.ifPro === true && hasPro))));
 const results = [];
 
 console.log(`Nexi 灵犀 —— 全量验收（版本 ${ver}）`);

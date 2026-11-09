@@ -7,7 +7,7 @@
 > 一个装在 DeepSeek Harness 里的插件：**给你一个什么活都能自己干的超级 Agent，再给你一间谁都能进来干活的作战室。**
 >
 > **已上 npm，一条命令装**：`npx -y agentdeck-super@latest --all`
-> 离线/内网用交付包：`node install.mjs --bundle .\agentdeck-super-1.11.8.tgz`
+> 离线/内网用交付包：`node install.mjs --bundle .\agentdeck-super-1.11.9.tgz`
 >
 > 开源仓库（核心 AGPL-3.0 / 适配器 Apache-2.0，见 [`LICENSING.md`](LICENSING.md)）：https://github.com/wm17717783258-boop/agentdeck-super
 
@@ -66,7 +66,7 @@ dsh plugin add agentdeck-super
 npx -y agentdeck-super@latest --all
 
 # 未上架 / 离线测试：在交付包目录里
-node install.mjs --bundle .\agentdeck-super-1.11.8.tgz
+node install.mjs --bundle .\agentdeck-super-1.11.9.tgz
 
 # 本地开发（会把源码目录直接写进宿主配置，仅调试用）
 node install.mjs --dev codex
@@ -78,7 +78,7 @@ dsh plugin --profile dev add link:D:/agentdeck-super
 宿主配置里的路径不变**；改完代码重新打 tgz 后：
 
 ```powershell
-node <安装目录>\bin\nexi.mjs update --bundle .\agentdeck-super-1.11.8.tgz
+node <安装目录>\bin\nexi.mjs update --bundle .\agentdeck-super-1.11.9.tgz
 ```
 
 改自己的源码后，不想每次打 tgz，可以先用固定目录安装当前源码：
@@ -331,9 +331,11 @@ node tools/verify-public.mjs --provider cloudflared    # 公网 MCP 全链路：
 
 ## 版本与路线
 
-> 当前测试版：**1.11.8**。下面旧条目里的“本版”是当时发布原文，保留用于追溯。
+> 当前测试版：**1.11.9**。下面旧条目里的“本版”是当时发布原文，保留用于追溯。
 
-- **1.11.8（本版）**：**发布链路真的转起来了——改完一条命令到上线，全程不碰浏览器、不要动态码**。npm 上已真实发布，用户侧一条命令：`npx -y agentdeck-super@latest --all`。新增两个工具：`tools/release.mjs`（脱敏 → 体检 → 全测 → 打包 → 临时目录装一遍真调工具 → 发布 → 回源确认 → 可选 `--publish`）与 `tools/dev.mjs`（打包 → 装本机全部宿主 → 宿主自报 → 配置真伪 → 工具冒烟），发布凭据用带 bypass 的 granular token（写进 `~/.npmrc`，90 天）。**修掉四个会把成功判成失败的坑**：① `npm view` 有约 5 分钟 CDN 缓存，发布后立刻查会读到旧文档（改成直连 registry 文档接口并带 cache-busting）；② npm 新版发布是**异步**的，PUT 之后先回 409「正在处理」，1–3 分钟才可查（改成等待而不是判失败）；③ `test-summary.mjs` 只认 `ℹ tests`、不认非 TTY 的 TAP `# tests`，会把全绿读成空；④ `release.mjs` 在 Windows 上 `spawnSync('npm') + shell:false` 直接 ENOENT（npm 是 `.cmd` 垫片）。另修两个真缺陷：`bin/nexi-pet.mjs` 缺 shebang（macOS/Linux 装完 `Exec format error`）、`@deepseek-ai/cordis` 写死成硬 peer（代码零处 import，改成可选）。回归：全量 **1109 条 / 1094 通过 / 0 失败 / 15 跳过**；从公网 `npx -y agentdeck-super` 真装回来 **6/6 宿主确认、配置 6/6 全部可移植、23 个工具真调通过**。**边界照写**：Zed / VS Code / OpenCode / Cursor / Windsurf / Cline / Continue 本机未安装，只核过官方文档形状，**不算已验证**；macOS / Linux 完全未测；`bypass 2FA` 直发通道 npm 已宣布 2027-01 取消，届时要走 `stage publish` + 网页批准。
+- **1.11.9（本版）**：**把"买皮肤"这一侧整体搬回开源**。1.11.5–1.11.8 发出去的包里，市场代码全在闭源层 `pro/` 里，等于**买家必须先付费才能付费** —— 逻辑死锁。这一版重划边界：货架 / 账本 / 下单 / 人工确认 / 退款 / 80-20 分账（约 2100 行）回到 `lib/market/`；闭源只留卖家侧与渠道细节（在线收款、对账、发票、主题包）。**是往回收，不是往前推**：公开部分比上一版更多，没有任何东西从开源变闭源。四个自检里挖出来的真缺陷一并修掉：① **两处读-改-写没有互斥** —— 两个宿主同时确认时后写的覆盖先写的，实测 3 进程 × 5 单只剩 5 单、销售流水 2 条（现在 `withFileLock` 用 O_EXCL 锁文件，陈旧锁按 mtime 抢，抢不到如实失败）；② **账本里认不出来的行被静默丢弃**，下次写入就把丢失落盘（现在原样进 `quarantined` 并给 warning）；③ **`nexi rollback --help` 真的会回滚**、`nexi pet --help` 真的弹窗（现在任何子命令带 `--help` 只解释不执行）；④ **`.gitignore` 里的 `market/` 连 `lib/market/` 一起吞了** —— 推上 GitHub 的开源版会缺整整一层，clone 下来起不来（改成 `/market/`，并给边界守门加了一条"核心源码不许被忽略"）。另修 `place` 缺参数时把"买"说成"卖"，以及开源版 `health` 教用户设 `AGENTDECK_PAY_*`（那层模块压根没装，设了不生效）。回归：全量 **1123 条 / 1108 通过 / 0 失败 / 15 跳过**，边界守卫 5 条规矩全过，公开包 259 个文件 `pro/` 零命中。
+
+- **1.11.8（历史）**：**发布链路真的转起来了——改完一条命令到上线，全程不碰浏览器、不要动态码**。npm 上已真实发布，用户侧一条命令：`npx -y agentdeck-super@latest --all`。新增两个工具：`tools/release.mjs`（脱敏 → 体检 → 全测 → 打包 → 临时目录装一遍真调工具 → 发布 → 回源确认 → 可选 `--publish`）与 `tools/dev.mjs`（打包 → 装本机全部宿主 → 宿主自报 → 配置真伪 → 工具冒烟），发布凭据用带 bypass 的 granular token（写进 `~/.npmrc`，90 天）。**修掉四个会把成功判成失败的坑**：① `npm view` 有约 5 分钟 CDN 缓存，发布后立刻查会读到旧文档（改成直连 registry 文档接口并带 cache-busting）；② npm 新版发布是**异步**的，PUT 之后先回 409「正在处理」，1–3 分钟才可查（改成等待而不是判失败）；③ `test-summary.mjs` 只认 `ℹ tests`、不认非 TTY 的 TAP `# tests`，会把全绿读成空；④ `release.mjs` 在 Windows 上 `spawnSync('npm') + shell:false` 直接 ENOENT（npm 是 `.cmd` 垫片）。另修两个真缺陷：`bin/nexi-pet.mjs` 缺 shebang（macOS/Linux 装完 `Exec format error`）、`@deepseek-ai/cordis` 写死成硬 peer（代码零处 import，改成可选）。回归：全量 **1109 条 / 1094 通过 / 0 失败 / 15 跳过**；从公网 `npx -y agentdeck-super` 真装回来 **6/6 宿主确认、配置 6/6 全部可移植、23 个工具真调通过**。**边界照写**：Zed / VS Code / OpenCode / Cursor / Windsurf / Cline / Continue 本机未安装，只核过官方文档形状，**不算已验证**；macOS / Linux 完全未测；`bypass 2FA` 直发通道 npm 已宣布 2027-01 取消，届时要走 `stage publish` + 网页批准。
 
 - **1.11.5（历史）**：**一条命令装、改完一条命令切、装完直接 `nexi pair` 真机测**。安装器改成固定目录 + 稳定启动器：Windows 默认 `%LOCALAPPDATA%\Nexi`，宿主配置只写 `<安装目录>\bin\nexi.mjs`，升级只切 `current.json`；坏包不切版本，旧版保留，`nexi rollback` 可回退。新增 `nexi pair host|guest|check|sync` 稳定入口，配对状态放 `<安装目录>\pair`，升级不丢。真实回归：全量测试 **1075 条 / 1060 通过 / 0 失败 / 15 跳过 / 98 文件**，验收矩阵 **18/18**（双机模拟 28/28、真网卡 16/16、串门 39/39、会议 41/41、可移植性 4/4），安装器 7/7。**边界照写：** 发布当时 npm / MCP Registry / GitHub Release 都还没上（npm 已在 1.11.8 真实发布，MCP Registry 与 GitHub Release 仍未）；不存在所有 Agent 共用的插件搜索市场；没有第二台物理电脑，不能宣称物理双机已验收。
 - **1.11.4（历史）**：**多设备入席有名字，项目管理员能核席位**。`nexi-pair guest` 新增 `--name "姓名-部门"`，默认回落到本机主机名；房主新增 `nexi-pair members` 查看完整席位名单；`deck_room join` 同步支持 `memberName`。定向回归：`pair-tooling` 4/4、`pair-seats` 3/3。**边界不变：** 一个房间最多 200 席，同一邀请每设备占 1 席，不是无限席位；本轮没有第二台物理电脑，不能把同机双进程当作物理机验收。
