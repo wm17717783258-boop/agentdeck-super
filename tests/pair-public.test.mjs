@@ -73,11 +73,11 @@ test('host --public-url：先探活，再用公网 origin 发邀请；独立 gue
   let guest = null;
 
   try {
-    const ready = await waitFor(() => host.out, /复制下面整段发给成员设备/);
+    const ready = await waitFor(() => host.out, /把下面这一行发到第二台设备/);
     assert.ok(ready, `host 没打印邀请块：\n${host.out}\n${host.err}`);
     assert.match(host.out, /公网探活通过/);
 
-    const inviteMatch = /邀请链接：(https?:\/\/[^\s]+)/.exec(host.out);
+    const inviteMatch = /pair guest --invite "(https?:\/\/[^"]+)"/.exec(host.out);
     assert.ok(inviteMatch, `host 没打印公网邀请：\n${host.out}`);
     const invite = inviteMatch[1];
     assert.ok(invite.startsWith(`${publicUrl}/?room=`), `邀请没换公网 origin：${invite}`);

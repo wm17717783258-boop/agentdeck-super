@@ -117,7 +117,14 @@ test('redact：幂等 —— 真改一次之后，第二遍必须 0 命中', () 
    */
   const dir = mkdtempSync(join(tmpdir(), 'nexi-redact-idem-'));
   const file = join(dir, 'sample.txt');
-  const RAW_IP = '192.168.31.189';
+  /*
+   * 这里必须用一个**不是白名单示例**的内网地址，而且**不能在源码里写成字面量**：
+   * 发布闸门第 2 阶段会 `redact --apply` 扫整仓，任何字面内网 IP 都会被归一成
+   * 192.168.1.10 —— 包括本文件的这一行。归完之后 RAW_IP 又变回"替换目标自己"，
+   * 断言重新自相矛盾：闸门里红、单跑绿，最难查的那一类。
+   * 所以拼出来：源码里没有可被扫到的 IP，运行时才是真地址。
+   */
+  const RAW_IP = ['192', '168', '9', '77'].join('.');
   try {
     writeFileSync(file, `我的地址是 ${RAW_IP}\n`, 'utf8');
     const run = () => spawnSync(process.execPath, [REDACT, '--apply', '--root', dir], {

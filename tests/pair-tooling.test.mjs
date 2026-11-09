@@ -72,7 +72,19 @@ test('host → guest → check 全链路走通（两个独立进程，走真实�
     assert.match(host.out, /测试授权：企业版 \/ 12 席/, 'host 应该打印本次测试授权的真实席位');
     assert.match(host.out, /席位：12（房主 1 席，可加入 11 台客人设备）/, '邀请块应该写清可加入的设备数');
     // 房间建成的标志是"打印了可转发的文本块"，不是房间名（房间名只在内部用）
-    assert.ok(host.out.includes('复制下面整段'), 'host 应该给出可转发的说明块');
+    assert.ok(host.out.includes('把下面这一行发到第二台设备'), 'host 应该给出可转发的说明块');
+    // 块里那行必须是**对面能直接跑**的：npx 全命令，不是源码路径
+    assert.match(host.out, /npx -y agentdeck-super@latest pair guest --invite "/,
+      '转发的命令要能在干净设备上跑；写 node tools/… 对面没有源码');
+    /*
+     * 邀请里不许是回环地址：中继用 127.0.0.1 建房，relay 生成的网页邀请就带 127.0.0.1。
+     * 对面拿到它会连自己的回环 —— 永远连不上，而且报错长得像"房间不存在"。
+     * 同机双实例恰好能通，所以这条以前一直没被发现。
+     */
+    if (!/中继已就绪：http:\/\/127\.0\.0\.1/.test(host.out)) {
+      assert.ok(!invite.includes('127.0.0.1'),
+        `邀请链接必须是对面能连到的地址，不能是回环：${invite}`);
+    }
     /*
      * 这一句必须等，不能立即断言：说明块和「房间已建好」是**两次** console.log，
      * 也就是两次 write。全量回归时 CPU 挤，第二段可能晚几十毫秒才到 —— 立即断言
@@ -131,7 +143,7 @@ test('host → guest → check 全链路走通（两个独立进程，走真实�
 
 test('guest 不带邀请时给出用法，不是崩', async () => {
   const r = launch([PAIR, 'guest']);
-  await waitFor(() => r.out, /用法|invite/, { timeoutMs: 8000 });
+  await waitFor(() => r.out, /用法|invite/, { timeoutMs: 30000 });
   assert.match(r.out, /--invite/, '应该提示要带 --invite');
   assert.match(r.out, /dsh:\/\/agentdeck\/join/, '应该给出邀请链接的样子');
   r.child.kill();
@@ -139,7 +151,10 @@ test('guest 不带邀请时给出用法，不是崩', async () => {
 
 test('不带角色参数时打印帮助（不静默什么都不做）', async () => {
   const r = launch([PAIR]);
-  await waitFor(() => r.out, /真机配对/, { timeoutMs: 8000 });
+  // 这个文件被 import 时会连带拉起 hub/license/tunnel 一堆模块，
+  // 全量回归时机器挤，8 秒偶尔不够（实测红过两次，单跑永远绿）。
+  // 放宽的是等待时间，不是断言。
+  await waitFor(() => r.out, /真机配对/, { timeoutMs: 30000 });
   assert.match(r.out, /host/, '帮助里应该有 host');
   assert.match(r.out, /guest/, '帮助里应该有 guest');
   assert.match(r.out, /check/, '帮助里应该有 check');
@@ -151,7 +166,7 @@ test('check 在从没配对过时如实说明，不假装有数据', async () =>
   const dir = mkdtempSync(join(tmpdir(), 'nexi-pair-empty-'));
   try {
     const r = launch([PAIR, 'check'], { env: { NEXI_PAIR_DIR: dir } });
-    await waitFor(() => r.out, /本机没记过|先跑一次/, { timeoutMs: 15000 });
+    await waitFor(() => r.out, /本机没记过|先跑一次/, { timeoutMs: 30000 });
     assert.match(r.out, /本机没记过|先跑一次/, '应该提示先跑 host 或 guest');
     r.child.kill();
   } finally {

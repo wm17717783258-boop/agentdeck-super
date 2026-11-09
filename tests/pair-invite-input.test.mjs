@@ -31,11 +31,14 @@ test('支持 NEXI_INVITE 环境变量（最省事的方式）', () => {
   assert.ok(/process\.env\.NEXI_INVITE/.test(SRC), '应该从 process.env 读');
 });
 
-test('帮助里要把三种方式都写出来（用户才不用猜）', () => {
-  // 帮助文本里应有：--invite-file、NEXI_INVITE、以及 shell 例子
-  assert.ok(/invite-file/.test(SRC));
-  assert.ok(/NEXI_INVITE/.test(SRC));
-  assert.ok(/PowerShell|Power Shell/.test(SRC) || /env:NEXI_INVITE/.test(SRC), '应给出 PowerShell 写法');
+test('帮助里主路径和退路各一条，不摆一堆让人挑', () => {
+  // 支持的方式有三种（--invite / --invite-file / NEXI_INVITE），
+  // 但**给用户看的**只留前两种，且必须分主次：
+  // 以前三条并列（①②③），用户不知道该抄哪条；
+  // 而"② 次稳"里的 `set NEXI_INVITE=a&b` 在 cmd 里会从 & 处截断 —— 本身就不稳。
+  assert.ok(/invite-file/.test(SRC), '缺 --invite-file 退路');
+  assert.ok(/--invite/.test(SRC), '缺 --invite 主路径');
+  assert.ok(/NEXI_INVITE/.test(SRC), '环境变量仍要支持（测试/自动化在用）');
 });
 
 test('--invite-file 真能用：从文件读链接', () => {
@@ -62,12 +65,15 @@ test('--invite-file 指向不存在的文件时如实报错', () => {
   assert.match(r.stdout, /读不到邀请文件/, `应明确说读不到：${r.stdout.slice(0, 200)}`);
 });
 
-test('没有任何输入时，帮助里给出三种绕开 shell 的方式', () => {
+test('没有任何输入时，帮助给出一条主路径 + 一条退路，且不推荐会被截断的写法', () => {
   const r = spawnSync(process.execPath, [PAIR, 'guest'], {
     cwd: PKG, encoding: 'utf8', windowsHide: true, timeout: 20000,
   });
   const out = r.stdout;
-  assert.match(out, /--invite-file/, '帮助应提 --invite-file');
-  assert.match(out, /NEXI_INVITE/, '帮助应提 NEXI_INVITE');
-  assert.match(out, /cmd|PowerShell|bash/i, '帮助应给出各 shell 写法');
+  assert.match(out, /--invite-file/, '退路要写出来：链接被 shell 吃掉时靠它');
+  assert.match(out, /guest --invite "/, '主路径要是能整行复制就跑的命令');
+  assert.ok(out.indexOf('guest --invite "') < out.indexOf('--invite-file'),
+    '主路径要排在退路前面，顺序本身就是指引');
+  assert.doesNotMatch(out, /set NEXI_INVITE=[^"]/,
+    'cmd 的 set X=a&b 会在 & 处截断，不能写成推荐方案');
 });

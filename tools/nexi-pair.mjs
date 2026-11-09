@@ -112,6 +112,51 @@ export function publicInvite(localInvite, publicUrl) {
   return room && token ? `${base}/?room=${room}&t=${token}` : String(localInvite || '');
 }
 
+/**
+ * 配对指引里给用户敲的命令前缀。
+ *
+ * 必须是 npx 全命令：第二台设备上只有 Node，没有本仓源码。
+ * 真机踩过 —— 房主打印的是 `node tools/nexi-pair.mjs guest ...`，
+ * 对面照着敲直接 "Cannot find module"，而房主这边一切正常，
+ * 于是两边都以为是对方网络的问题。
+ */
+export const PAIR_CLI = 'npx -y agentdeck-super@latest pair';
+
+/**
+ * 房主屏幕上那段"发给对面"的文本。
+ *
+ * 只给**一条**能直接跑的命令。以前给三条（存文件 / 环境变量 / 直接贴），
+ * 用户不知道挑哪条；而 cmd 里的 `set X=a&b` 还会把链接从 & 处截断，
+ * 所谓"次稳"其实不稳。现在主路径一条，失败再给一条退路。
+ */
+export function buildInviteBlock({ invite, cli = PAIR_CLI } = {}) {
+  const link = String(invite || '');
+  return [
+    '===== 把下面这一行发到第二台设备（原样粘贴，别改） =====',
+    `${cli} guest --invite "${link}"`,
+    '',
+    '那台设备不用装本项目源码，也不要授权码，有 Node 就能跑。',
+    '想把席位名写成"张三-设计部"：在那一行末尾加 --name "张三-设计部"。',
+    '',
+    '万一对面粘进去报错（少数终端会把链接里的 & 当分隔符）：',
+    '  1) 把上面那条链接单独存成 invite.txt（记事本，只放链接，别加字）',
+    `  2) 在那台设备上跑：${cli} guest --invite-file invite.txt`,
+    '===== 复制结束 =====',
+  ].join('\n');
+}
+
+/** 配对完成后的下一步提示，同样是 npx 全命令。 */
+export function buildPairHints({ cli = PAIR_CLI } = {}) {
+  return [
+    '等第二台设备那边跑完之后，两边都跑一次：',
+    `  ${cli} check`,
+    '',
+    '要验真实任务交付（可选，但这是唯一能证明"任务真的跨机了"的步骤）：',
+    `  ${cli} task add --title "跨机验收任务" --acceptance "乙机看到并领取"`,
+    `  两边各跑一次：${cli} sync`,
+  ];
+}
+
 /** 从 team_board 的人话输出里取小组 id；取不到返回空串。 */
 function teamIdFromText(text) {
   const m = /已创建小组\s+([A-Za-z0-9:_-]+)/.exec(String(text || ''));
@@ -436,7 +481,13 @@ async function cmdHost() {
       console.log(`公网探活通过：${publicBase}/healthz\n`);
     }
 
-    // 4) 激活 + 建房间。建房走本机 relay，邀请再换成公网 origin。
+    // 4) 激活 + 建房间。建房走本机 relay，邀请再换成对面能连到的 origin。
+    //
+    // 局域网模式下这个 origin 必须是局域网地址：relay 是用 127.0.0.1 建的房，
+    // 它生成的网页邀请就带着 127.0.0.1。对面拿到它连的是**自己**的回环 ——
+    // 永远连不上，而且报错长得像"房间不存在"。同机双实例测不出来，
+    // 因为那台机器上 127.0.0.1 恰好就是房主。
+    const lanBase = best ? `http://${best.address}:${realPort}` : '';
     const room = await withHub(async (hub) => {
       // 授权要写到 licenseRoot 下面（不是工作区）—— 写错地方就会出现
       // "明明激活了却说我是免费版"（真机踩到过这个）
@@ -461,7 +512,8 @@ async function cmdHost() {
         ? `${localRelayUrl}/?room=${roomIdM[1]}&t=${tokenM[1]}`
         : '';
       const localInvite = webInvite || synthesized || deepInvite;
-      const invite = publicBase ? publicInvite(localInvite, publicBase) : localInvite;
+      // 公网优先；没有公网就换成局域网地址（不是留着 127.0.0.1）。
+      const invite = publicInvite(localInvite, publicBase || lanBase);
       const roomId = (out.match(/room[=:]?\s*([0-9a-f-]{8,})/i) || [])[1] || '';
       return { out, invite, localInvite, roomId, webInvite, deepInvite, team };
     });
@@ -474,7 +526,7 @@ async function cmdHost() {
       return;
     }
 
-    const inviteBase = publicBase || lanRelayUrl.replace(`:${requestedPort}`, `:${realPort}`);
+    const inviteBase = publicBase || lanBase;
     writeState({
       role: 'host',
       relayUrl: publicBase || inviteBase,
@@ -492,44 +544,17 @@ async function cmdHost() {
       pidHost: process.pid,
     });
 
-    // 5) 打印可以整段复制发给对面的文本
-    const block = [
-      '===== 复制下面整段发给成员设备 =====',
-      `中继地址：${publicBase || inviteBase}`,
-      `邀请链接：${room.invite}`,
-      `席位：${seatCfg.seats}（房主 1 席，可加入 ${Math.max(0, seatCfg.seats - 1)} 台客人设备）`,
-      '',
-      '每台成员设备都用同一条邀请，各占 1 席；--name 写“姓名-部门/设备”，房主能在 members 里看到。',
-      '注意：链接里有 & ，在 cmd/PowerShell 里会被 shell 吃掉，',
-      '所以推荐用下面第一种（存文件）或第二种（环境变量），别直接贴进 --invite。',
-      '',
-      '① 最稳（存成文件，然后读它）：',
-      '   把邀请链接存到 invite.txt，然后：',
-      '   node tools/nexi-pair.mjs guest --invite-file invite.txt --name "张三-设计部"',
-      '',
-      '② 次稳（环境变量）：',
-      '   set NEXI_INVITE=' + room.invite + '      (cmd)',
-      '   $env:NEXI_INVITE="' + room.invite + '"   (PowerShell)',
-      '   node tools/nexi-pair.mjs guest',
-      '',
-      '③ 直接贴（bash/zsh 可以，cmd 容易踩坑）：',
-      `   node tools/nexi-pair.mjs guest --invite "${room.invite}"`,
-      '===== 复制结束 =====',
-    ].join('\n');
-
-    console.log(block);
+    // 5) 打印一段可以整段复制发给对面的文本
+    console.log(`中继地址：${inviteBase}`);
+    console.log(`席位：${seatCfg.seats}（房主 1 席，可加入 ${Math.max(0, seatCfg.seats - 1)} 台客人设备）`);
+    console.log('');
+    console.log(buildInviteBlock({ invite: room.invite }));
     console.log('');
     console.log('房间已建好，中继在这个进程里跑着 —— 别关这个窗口。');
     if (publicBase) console.log(`公网入口已验证：${publicBase}（${tunnel?.provider || 'external'}）。`);
     if (room.team?.ok) console.log(`跨机小组已建好：${room.team.teamId}`);
     else console.log(`跨机小组没建起来（任务同步会受限）：${room.team?.reason || '未知原因'}`);
-    console.log('等第二台设备那边跑完 guest 之后，两边都可以执行：');
-    console.log('  node tools/nexi-pair.mjs check');
-    console.log('  node tools/nexi-pair.mjs members');
-    console.log('');
-    console.log('要验真实任务交付，另开一个窗口：');
-    console.log('  node tools/nexi-pair.mjs task add --title "跨机验收任务" --acceptance "乙机看到并领取"');
-    console.log('  两边各跑一次：node tools/nexi-pair.mjs sync');
+    console.log(buildPairHints().join('\n'));
     console.log('');
     console.log('按 Ctrl-C 结束（房间和隧道一起关闭）。');
   } catch (err) {
@@ -580,19 +605,16 @@ async function cmdGuest() {
   ).slice(0, 40);
   let relayHint = String(flagValue('--relay', '') || '').trim();
   if (!invite) {
-    console.log('用法：node tools/nexi-pair.mjs guest --invite "<第一台设备给你的邀请链接>"');
+    console.log('第一台设备（房主）会打印一整行给你，原样粘过来就行。');
     console.log('');
-    console.log('推荐（绕开 shell 对 & 的处理）：');
-    console.log('  set NEXI_INVITE=<链接>        (cmd)');
-    console.log('  $env:NEXI_INVITE="<链接>"     (PowerShell)');
-    console.log('  export NEXI_INVITE="<链接>"   (bash)');
-    console.log('  node tools/nexi-pair.mjs guest');
+    console.log(`  ${PAIR_CLI} guest --invite "<房主给的那条链接>"`);
     console.log('');
-    console.log('或者把链接存成文件：');
-    console.log('  node tools/nexi-pair.mjs guest --invite-file invite.txt');
+    console.log('链接里的 & 会被个别终端当成分隔符。真粘不进去就存文件：');
+    console.log('  把链接单独存成 invite.txt（只放链接，别加别字），然后');
+    console.log(`  ${PAIR_CLI} guest --invite-file invite.txt`);
     console.log('');
-    console.log('邀请链接长这样：dsh://agentdeck/join?room=xxxx&t=yyyy');
-    console.log('或这样：      http://192.168.x.x:8787/?room=xxxx&t=yyyy');
+    console.log('邀请链接长这样：http://192.168.x.x:8787/?room=xxxx&t=yyyy');
+    console.log('装了 DSH 的机器也可能是：dsh://agentdeck/join?room=xxxx&t=yyyy（同样能进）');
     process.exitCode = 1;
     return;
   }
@@ -655,9 +677,17 @@ async function cmdGuest() {
   const syncOk = !/失败|连不上|错误|没有配置/.test(result.syncOut);
   const ok = joinOk && syncOk;
   if (ok) {
-    writeState({ role: 'guest', invite, guestAt: new Date().toISOString() });
-    console.log(`进房并同步成功，已占用 1 席（${deviceName}）。现在两边都可以执行：`);
-    console.log('  node tools/nexi-pair.mjs check');
+    // 把中继地址一起记下来：不记的话，客人在**自己**这台设备上跑 check
+    // 会打印"本机没记过，先跑一次 host 或 guest"，而它明明刚跑完 guest。
+    // 真机踩过 —— 用户因此以为配对没成，白重跑一轮。
+    let relayUrl = relayHint;
+    try {
+      const u = new URL(invite);
+      if (/^https?:$/.test(u.protocol)) relayUrl = u.origin;
+    } catch { /* 不是合法 URL 就退回 relayHint */ }
+    writeState({ role: 'guest', invite, relayUrl: relayUrl || '', guestAt: new Date().toISOString() });
+    console.log(`进房并同步成功，已占用 1 席（${deviceName}）。现在两边都跑一次：`);
+    console.log(`  ${PAIR_CLI} check`);
   } else {
     const why = !joinOk ? '进房那一步' : '同步那一步';
     console.log(`没成功（${why}）。把上面的输出发给房主一起看。`);
@@ -777,11 +807,11 @@ async function cmdTask() {
   const known = ['add', 'list', 'claim', 'done', 'fail'];
   if (!known.includes(sub)) {
     console.log('用法：');
-    console.log('  node tools/nexi-pair.mjs task add --title "标题" --acceptance "验收标准"');
-    console.log('  node tools/nexi-pair.mjs task list');
-    console.log('  node tools/nexi-pair.mjs task claim --id task_xxx');
-    console.log('  node tools/nexi-pair.mjs task done --id task_xxx --output "产出"');
-    console.log('  node tools/nexi-pair.mjs task fail --id task_xxx --note "失败原因"');
+    console.log('  nexi pair task add --title "标题" --acceptance "验收标准"');
+    console.log('  nexi pair task list');
+    console.log('  nexi pair task claim --id task_xxx');
+    console.log('  nexi pair task done --id task_xxx --output "产出"');
+    console.log('  nexi pair task fail --id task_xxx --note "失败原因"');
     process.exitCode = 2;
     return;
   }
@@ -843,7 +873,7 @@ function cmdHelp() {
   console.log('换端口：nexi pair host --port 9000');
   console.log('扩席位：nexi pair host --tier business --seats 50');
   console.log('成员命名：nexi pair guest --invite-file invite.txt --name "张三-设计部"');
-  console.log('源码目录等价写法：node tools/nexi-pair.mjs <同样的参数>');
+  console.log(`没装过这个包、只在别的设备上临时用：${PAIR_CLI} guest --invite "<链接>"`);
 }
 
 const TABLE = { host: cmdHost, guest: cmdGuest, check: cmdCheck, sync: cmdSync, members: cmdMembers, task: cmdTask, help: cmdHelp };
