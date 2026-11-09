@@ -183,7 +183,10 @@ async function cmdDoctor() {
   let tools = [];
   let hubErr = '';
   try {
-    const hub = await createHub(await hubOptionsFromEnv());
+    // 体检要安静：createHub 会给每个工具打一行 [nexi:info]，二十几行日志
+    // 会把三段结论顶出屏幕 —— 用户本来就看不懂，再把结论挤走等于白做。
+    // 真起不来时 hubErr 里有原因，不会因为静默而失明。
+    const hub = await createHub({ ...(await hubOptionsFromEnv()), onLog: () => {} });
     tools = hub.list().map((t) => t.name);
   } catch (err) {
     hubErr = err.message;

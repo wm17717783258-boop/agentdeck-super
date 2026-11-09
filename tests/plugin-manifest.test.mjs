@@ -53,11 +53,21 @@ test('插件版本与 npm 包版本一致（两条分发路径不许脱节）', 
   assert.equal(PLUGIN.version, PKG.version, `plugin.json=${PLUGIN.version} package.json=${PKG.version}`);
 });
 
-test('.mcp.json 起的是 nexi mcp，不是别的入口', () => {
+test('.mcp.json 用 node 跑插件自带的 launch.mjs，且真的传 mcp', () => {
   const servers = MCP.mcpServers || {};
   const nexi = servers.nexi;
   assert.ok(nexi, '.mcp.json 里没有 nexi 服务');
-  const argv = [nexi.command, ...(nexi.args || [])].join(' ');
-  assert.match(argv, /\bnexi\b|agentdeck-super/, `启动命令看起来不像本包：${argv}`);
-  assert.match(argv, /\bmcp\b/, '必须带 mcp 子命令，否则起的是 CLI 不是协议服务');
+  assert.equal(nexi.command, 'node', '应该用 node 跑垫脚本，而不是每次走 npx');
+  const args = nexi.args || [];
+  assert.match(args[0] || '', /launch\.mjs$/);
+  assert.ok((args[0] || '').includes('CLAUDE_PLUGIN_ROOT'), '必须用 CLAUDE_PLUGIN_ROOT，不能写死绝对路径');
+  assert.equal(args[args.length - 1], 'mcp', '最后一位必须是 mcp，否则起的是 CLI 不是协议服务');
+  assert.ok(existsSync(path.join(ROOT, 'plugins/nexi/launch.mjs')), 'launch.mjs 不存在，插件起不来');
+});
+
+test('launch.mjs 两条路都在：有固定目录就用它，没有回退 npx', () => {
+  const src = readFileSync(path.join(ROOT, 'plugins/nexi/launch.mjs'), 'utf8');
+  assert.ok(src.includes("'bin', 'nexi.mjs'"), '找不到固定目录启动器路径');
+  assert.ok(src.includes('agentdeck-super'), '没有回退到 npx 的分支，没装过的机器起不来');
+  assert.ok(src.includes('existsSync(stable)'), '没有判断固定目录在不在');
 });

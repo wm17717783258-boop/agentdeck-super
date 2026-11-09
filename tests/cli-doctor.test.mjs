@@ -226,3 +226,22 @@ test('install.mjs mcp 真能起协议服务（插件靠这一条活着）', asyn
   assert.equal(r.info?.name, 'nexi', '起的是别的东西');
   assert.ok(r.proto, '没返回协议版本');
 });
+
+/**
+ * 体检要安静。
+ *
+ * createHub 会给每个工具打一行 [nexi:info]，二十几行日志把三段结论顶出屏幕——
+ * 用户本来就看不懂，再把结论挤走，等于这个命令白做（第一次从 npx 跑时就是这样）。
+ */
+test('体检不许被 [nexi:info] 日志淹没', () => {
+  const r = run();
+  const all = `${r.stdout || ''}${r.stderr || ''}`;
+  assert.ok(!/\[nexi:info\]/.test(all), `doctor 打了注册日志，结论会被顶走：${all.slice(0, 200)}`);
+  assert.ok(String(r.stdout || '').startsWith('Nexi 自检'), 'stdout 第一行必须是标题');
+});
+
+test('体检输出要够短（结论不能被顶出屏幕）', () => {
+  const r = run();
+  const lines = String(r.stdout || '').split('\n').filter((l) => l.trim()).length;
+  assert.ok(lines <= 45, `doctor 打了 ${lines} 行，太长了`);
+});
