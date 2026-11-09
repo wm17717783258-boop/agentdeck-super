@@ -522,7 +522,9 @@ test('原子写：连续写不撕裂、不留下 .tmp 临时文件', () => {
   const file = path.join(dir, 'orders.json')
 
   for (let i = 0; i < 25; i += 1) {
-    const placed = placeOrder({ store, skinId: SKIN, now: fixedNow })
+    // 每个买家各下一单：同一个买家重复下同一套皮肤会**复用**待付款单（1.11.9 起），
+    // 那样这个用例就变成"25 次写同一张单"，测不到原子写了。
+    const placed = placeOrder({ store, skinId: SKIN, now: fixedNow, buyer: `buyer-${i}` })
     assert.equal(placed.ok, true)
     assert.equal(store.readOrders().doc.orders.length, i + 1)
     const disk = JSON.parse(fs.readFileSync(file, 'utf8'))

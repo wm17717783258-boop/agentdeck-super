@@ -788,6 +788,16 @@ function help() {
   return 0;
 }
 
+/**
+ * `nexi <子命令> --help` 一律**只解释、不执行**。
+ *
+ * 这不是讲究，是止血：自检时 `nexi rollback --help` 真的把安装目录回滚到了上一个版本
+ * （history.json 里留下一条 action:"rollback"），`nexi pet --help` 真弹了个桌宠窗口，
+ * `nexi verify-host --help` 把 "--help" 当成宿主 id 去认证了一遍。
+ * 在任何 CLI 里 --help 都该是只读的；一个带副作用的 --help 会让"先看看怎么用"变成事故。
+ */
+const helpAsked = rest.some((a) => a === '--help' || a === '-h');
+
 const table = {
   mcp: cmdMcp,
   list: cmdList,
@@ -821,5 +831,11 @@ const run = table[cmd] || (() => {
   return help();
 });
 
-const code = await run();
+let code;
+if (helpAsked && cmd !== 'help' && cmd !== '--help' && cmd !== '-h' && table[cmd]) {
+  log(`nexi ${cmd}：带 --help，只显示帮助，没有执行任何动作。`);
+  code = help();
+} else {
+  code = await run();
+}
 if (typeof code === 'number') process.exitCode = code;
