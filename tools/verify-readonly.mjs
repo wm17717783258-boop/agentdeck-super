@@ -232,7 +232,17 @@ try {
     JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'team_board', arguments: { action: 'add', title: 'CLI 不该加的' } } }),
     JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'team_board', arguments: { action: 'list' } } }),
   ].join('\n') + '\n';
-  const cliRun = spawnSync(process.execPath, [join(PKG, 'bin', 'nexi.mjs'), 'mcp', '--read-only'], {
+  /*
+   * CLI 必须用**装进 profile 的那一份**，不是仓库里的 bin/nexi.mjs。
+   *
+   * 踩过的坑：原来这里用 join(PKG, 'bin', 'nexi.mjs')（仓库版，带 pro/，23 个工具），
+   * 而同脚本里的宿主进程用的是公开包（22 个工具）。于是「CLI 只读 19 / 完整 22」
+   * 这条断言永远差一个 —— 差的不是缺陷，是两份不同的代码被拿来对账。
+   * 现在两边同源：用户装到什么，CLI 就是什么。
+   */
+  const installedCli = join(fixture.profileDir, 'node_modules', 'agentdeck-super', 'bin', 'nexi.mjs');
+  const cliBin = existsSync(installedCli) ? installedCli : join(PKG, 'bin', 'nexi.mjs');
+  const cliRun = spawnSync(process.execPath, [cliBin, 'mcp', '--read-only'], {
     env, encoding: 'utf8', input: script, timeout: 120000, windowsHide: true,
   });
   const replies = String(cliRun.stdout || '').trim().split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
@@ -245,9 +255,18 @@ try {
   say(clip(cliAdd?.content?.[0]?.text, 200));
   say('```');
   say('');
+  /*
+   * 期望差几个：不是写死 4，而是"完整清单里那些**整体不可用**的工具"到底有几个。
+   *
+   * 写死 4 的后果已经出现了：deck_meeting 搬进 pro/ 之后，公开包里没有它，
+   * 整体不可用的就从 4 个变成 3 个，这条断言立刻红 —— 而产品是好的。
+   * 所以从 toolsB 里现算：只读应得的集合 = 完整集合里能只读的，差值自然得出。
+   */
+  const CLOSED_IN_READONLY = ['super_agent', 'team_orchestrate', 'pet_meeting', 'twin_remember'];
+  const expectedCliReadonly = toolsB.filter((n) => !CLOSED_IN_READONLY.includes(n)).length;
   check(
-    'CLI 只读：tools/list 比完整模式少 4 个（整体不可用的被摘掉）',
-    cliTools.length > 0 && cliTools.length === toolsB.length - 4,
+    `CLI 只读：tools/list 只剩能只读的（完整 ${toolsB.length} − 整体不可用 ${toolsB.length - expectedCliReadonly} = ${expectedCliReadonly}）`,
+    cliTools.length > 0 && cliTools.length === expectedCliReadonly,
     `CLI 只读 ${cliTools.length} / 完整 ${toolsB.length}`,
   );
   check('CLI 只读：add 返回 isError', cliAdd?.isError === true, clip(cliAdd?.content?.[0]?.text, 80));

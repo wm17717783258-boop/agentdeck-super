@@ -32,10 +32,23 @@ import { tmpdir, networkInterfaces } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { ensurePackage } from './pack-helper.mjs';
+
 const REPO = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const VERSION = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')).version;
 const OUT = join(REPO, 'docs', 'evidence', `twomachines-${VERSION}.txt`);
-const TGZ = join(REPO, `agentdeck-super-${VERSION}.tgz`);
+/*
+ * 包从哪来：现打（见 tools/pack-helper.mjs）。
+ * 原来赌仓库根有个 tgz —— 开发机上没有，于是"两台电脑开箱测试"永远 0 通过，
+ * 而那两条失败跟两台电脑一点关系都没有，纯粹是文件不存在。
+ * 这就是最坏的一类验收：结论看着很严重，原因却是脚本自己的假设。
+ */
+const packed = ensurePackage(process.env.NEXI_VERIFY_TGZ);
+if (!packed.ok) {
+  console.log('打不出安装包：', packed.reason);
+  process.exit(1);
+}
+const TGZ = packed.tgz;
 
 const lines = [];
 let pass = 0;

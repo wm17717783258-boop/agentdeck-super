@@ -12,12 +12,36 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractTgz } from '../lib/untar.js';
 import { HUB_TOOL_ORDER } from '../lib/hub.js';
+import { ensurePackage } from './pack-helper.mjs';
 
 // 仓库位置：从本文件位置往上推，别写死——写死后在别的机器上直接失败（真机踩过）
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const version = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')).version;
-const tgz = join(REPO, `agentdeck-super-${version}.tgz`);
-const expectedTools = HUB_TOOL_ORDER.length;
+
+/*
+ * 包从哪来：现打。
+ * 原来这里写的是 `join(REPO, `agentdeck-super-${version}.tgz`)` —— 赌仓库根有个 tgz。
+ * 开发机上没有，于是每次都是「解包失败：ENOENT」，看起来像可移植性坏了。
+ * 更坏的情况是：有人手动打过一个旧包放着，验收就在验旧代码，还能给出"通过"。
+ * 现在改成现打，且打到临时目录（不往仓库丢大文件）。
+ */
+const packed = ensurePackage(process.env.NEXI_VERIFY_TGZ);
+if (!packed.ok) {
+  console.log('  ❌ 打不出安装包:', packed.reason);
+  process.exit(1);
+}
+const tgz = packed.tgz;
+/*
+ * 这里解开的是**公开包**：npm pack 走 package.json 的 files 白名单，`pro/` 不在里面。
+ * 所以工具面 = HUB_TOOL_ORDER 减去闭源层注册的那几个。
+ *
+ * 为什么把名字列出来而不是写个减 1：
+ *   写成 `HUB_TOOL_ORDER.length - 1` 的话，将来闭源层多一个工具、或者核心多一个工具，
+ *   这个数字都会碰巧正确 —— 那这条断言就变成永远绿的空转。
+ *   列名字才能真的发现"闭源工具漏进公开包了"或"核心工具没挂上"。
+ */
+const PRO_ONLY_TOOLS = ['deck_meeting'];
+const expectedTools = HUB_TOOL_ORDER.filter((n) => !PRO_ONLY_TOOLS.includes(n)).length;
 const far = mkdtempSync(join(tmpdir(), 'portable-'));
 const dshHome = join(far, 'dsh');
 const work = join(far, 'work');
@@ -77,7 +101,14 @@ child.stdout.on('data', (d) => {
       if (!Number.isInteger(count) || count !== expectedTools) {
         return finish(`  ❌ 工具清单 ${count ?? '缺失'} 个，期望 ${expectedTools} 个`, 1);
       }
-      finish(`  ✅ 工具清单：${count} 个，与本机一致\n  ✅ 2/2 通过`, 0);
+      // 正向断言之外再来一条反向的：闭源工具绝不能出现在公开包里。
+      // 这才是「开源/闭源边界」在可移植性这一层的真实验证。
+      const names = (m.result?.tools || []).map((t) => t.name);
+      const leaked = PRO_ONLY_TOOLS.filter((n) => names.includes(n));
+      if (leaked.length) {
+        return finish(`  ❌ 公开包里出现了闭源工具：${leaked.join('、')}`, 1);
+      }
+      finish(`  ✅ 工具清单：${count} 个，与公开包应有的数量一致\n  ✅ 闭源工具（${PRO_ONLY_TOOLS.join('、')}）没有混进公开包\n  ✅ 3/3 通过`, 0);
     }
   }
 });

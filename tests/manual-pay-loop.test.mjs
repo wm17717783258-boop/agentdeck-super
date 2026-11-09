@@ -38,7 +38,8 @@ function manualShop() {
   const root = mkdtempSync(join(tmpdir(), 'adsk-manual-pay-'));
   const market = createMarket({ root, billing: null });
   const tool = createMarketTool({ market, billing: null });
-  return { root, market, tool, done: () => rmSync(root, { recursive: true, force: true }) };
+  // store 一起暴露：断言要看账本，不能只看文案（文案里"待付款"三个字太容易假通过）
+  return { root, market, store: market.store, tool, done: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 const orderIdOf = (out) => (out.match(/订单号：(\S+)/) || [])[1] || '';
@@ -143,18 +144,33 @@ test('人工渠道闭环：下单不扣钱 → 凭证确认 → 皮肤真解锁 
   }
 });
 
-test('人工渠道闭环：同一套皮肤不会被重复下单（省得账本里两条待付款）', async () => {
-  const { tool, done } = manualShop();
+test('人工渠道闭环：同一套皮肤只留一张待付款单，不会堆账单', async () => {
+  /*
+   * 这条原来写的是「要么复用、要么提示」，其中"提示"用 /待付款/ 判 —— 而**下单成功的文案里
+   * 本来就带"待付款"三个字**，于是这个 or 分支永远成立，断言等于没写。
+   *
+   * 那个空转在并发探针里被抓出来了：连点 5 次，账本里躺了 5 张同价待付款单。
+   * 对人工收款是实打实的伤害 —— 付款备注是 MANUAL-<orderId>，两个备注就是两笔说不清的钱。
+   *
+   * 现在的断言不看文案，直接查账本：并发 5 次之后只能有 1 条 created。
+   */
+  const { tool, store, done } = manualShop();
   try {
     const first = await text(tool, { action: 'place', skinId: SKIN });
     assert.ok(orderIdOf(first), `第一次下单就该成功：${first.slice(0, 160)}`);
+
     const second = await text(tool, { action: 'place', skinId: SKIN });
-    // 已有待付款单时再次下单：要么复用同一笔，要么明说在挂单 —— 但不许又开一笔同价的
-    const secondId = orderIdOf(second);
-    const firstId = orderIdOf(first);
-    const reused = secondId && secondId === firstId;
-    const warned = /待付款|已经下单|还没付|挂/.test(second);
-    assert.ok(reused || warned, `重复下单既没复用也没提示，用户会付两次钱：\n${second.slice(0, 300)}`);
+    assert.equal(orderIdOf(second), orderIdOf(first), '第二次下单必须复用同一张单，不是新开一张');
+    assert.match(second, /已经有一张待付款单/, '复用时必须说清，不能让人以为又开了一张');
+
+    // 真正的证据在账本里，不在文案里
+    const created = store.readOrders().doc.orders.filter((o) => o.state === 'created');
+    assert.equal(created.length, 1, `账本里只该有 1 张待付款单，实际 ${created.length} 张`);
+
+    // 并发也压一遍：同时点 5 次，仍然只能留 1 张
+    await Promise.all([1, 2, 3, 4, 5].map(() => text(tool, { action: 'place', skinId: SKIN })));
+    const after = store.readOrders().doc.orders.filter((o) => o.state === 'created');
+    assert.equal(after.length, 1, `并发 5 次之后仍只该有 1 张待付款单，实际 ${after.length} 张`);
   } finally {
     done();
   }

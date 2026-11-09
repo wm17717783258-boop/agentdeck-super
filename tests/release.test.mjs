@@ -11,7 +11,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -100,18 +101,45 @@ test('release --dry-run 真跑：该成功就成功，该拦就拦，反正不�
     '--dry-run 不该改动 package.json');
 });
 
-test('redact：幂等 —— 连跑两次第二次必须 0 命中', () => {
-  const r1 = spawnSync(process.execPath, [REDACT], {
-    cwd: PKG, encoding: 'utf8', timeout: 180_000, windowsHide: true,
-  });
-  const r2 = spawnSync(process.execPath, [REDACT], {
-    cwd: PKG, encoding: 'utf8', timeout: 180_000, windowsHide: true,
-  });
-  assert.equal(r1.status, 0);
-  assert.equal(r2.status, 0);
-  const out2 = `${r2.stdout || ''}${r2.stderr || ''}`;
-  assert.match(out2, /命中 0 个文件/,
-    `脱敏必须幂等（跑第二遍不该再有命中），实际：\n${out2.slice(0, 600)}`);
+test('redact：幂等 —— 真改一次之后，第二遍必须 0 命中', () => {
+  /*
+   * 这条原来是在仓库根直接跑 `redact.mjs`（不带 --apply）两次，然后断言第二遍 0 命中。
+   * 那个写法从根上是错的，而且错得很隐蔽：
+   *   脱敏脚本默认是**干跑**（不 --apply 就一个字节都不改），
+   *   所以第二遍当然还能看见同一处 —— 它测的不是"幂等"，测的是"有没有真改"，
+   *   而后者恰恰是干跑模式下**不该发生**的事。
+   *   于是这条断言在正常代码上也会红，红得毫无信息量。
+   *
+   * 现在换成：造一个迷你目录（含一个真实内网 IP），--apply 跑两次。
+   *   第一次必须把 IP 换掉（证明它真的会改）；
+   *   第二次必须 0 命中（证明它不会把替换后再替换一遍 —— 那会把文件改乱）。
+   * 顺带的好处：不再碰仓库里的真实文件，也不依赖仓库里"正好有没有敏感数据"。
+   */
+  const dir = mkdtempSync(join(tmpdir(), 'nexi-redact-idem-'));
+  const file = join(dir, 'sample.txt');
+  const RAW_IP = '192.168.31.189';
+  try {
+    writeFileSync(file, `我的地址是 ${RAW_IP}\n`, 'utf8');
+    const run = () => spawnSync(process.execPath, [REDACT, '--apply', '--root', dir], {
+      cwd: PKG, encoding: 'utf8', timeout: 180_000, windowsHide: true,
+    });
+
+    const r1 = run();
+    assert.equal(r1.status, 0, `第一遍脱敏失败：\n${`${r1.stdout || ''}${r1.stderr || ''}`.slice(0, 600)}`);
+    const after1 = readFileSync(file, 'utf8');
+    assert.doesNotMatch(after1, new RegExp(RAW_IP.replace(/\./g, '\\.')),
+      `--apply 必须真的把真实 IP 换掉，实际还是：${after1.trim()}`);
+    assert.match(after1, /192\.168\.1\.10/, '替换目标应该是白名单里的示例地址');
+
+    const r2 = run();
+    assert.equal(r2.status, 0);
+    const out2 = `${r2.stdout || ''}${r2.stderr || ''}`;
+    assert.match(out2, /命中 0 个文件/,
+      `脱敏必须幂等（跑第二遍不该再有命中），实际：\n${out2.slice(0, 600)}`);
+    assert.equal(readFileSync(file, 'utf8'), after1, '第二遍不该再改文件内容');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('redact：源码里不写真实内网 IP（规则靠网段匹配）', () => {
