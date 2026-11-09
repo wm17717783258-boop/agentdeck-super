@@ -44,7 +44,7 @@ The report is in Chinese by design (the author's primary audience); the verdict 
 ```
 ┌────────────────────────────────
 │ 机器 win32/x64 · node 22.22.2
-│ 版本 1.11.10
+│ 版本 1.11.11
 │ 宿主 claude-code=ok codex=ok cursor=没装
 │ 功能 货架=ok 开单=ok 皮肤图=ok
 │ 结论 PASS

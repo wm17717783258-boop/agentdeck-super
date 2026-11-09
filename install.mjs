@@ -36,6 +36,22 @@ const valueOf = (name) => {
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : '';
 };
 
+/**
+ * 子命令透传：`npx -y agentdeck-super doctor` 必须真的是「体检」。
+ *
+ * 这个包的 bin 名叫 agentdeck-super，指向的就是本文件。所以
+ * `npx agentdeck-super doctor` 会把 doctor 当成"宿主 id"喂给安装流程，
+ * 结果是「装了一遍 + unknown-host」，而不是体检 —— 用户完全看不出发生了什么。
+ *
+ * 只转发**明确不属于安装器**的子命令。install / uninstall / update 保留
+ * 本文件自己的语义（`--all` 在这里是"所有宿主"，不是 nexi 的别的意思）。
+ */
+const FORWARDED = new Set(['doctor', 'list', 'call', 'status', 'pair', 'mcp', 'serve', 'config', 'version', 'uninstall']);
+if (args.length && FORWARDED.has(args[0])) {
+  const r = spawnSync(process.execPath, [NEXI, ...args], { cwd: process.cwd(), stdio: 'inherit', windowsHide: true });
+  process.exit(r.status ?? 0);
+}
+
 if (has('--help') || has('-h')) {
   console.log(`
 Nexi 安装器
@@ -48,6 +64,11 @@ Nexi 安装器
   node install.mjs --home <DIR>        指定安装根目录
   node install.mjs --verify            装完让宿主自己报一遍
   node install.mjs --dev [host]        开发模式：源码目录直接写宿主配置
+
+  node install.mjs doctor              体检：这台机器能不能用（人话，出问题直说差哪）
+  node install.mjs uninstall --all     从所有宿主摘掉 nexi（不动安装文件与你的数据）
+  node install.mjs pair host           生成配对码，让另一台设备连过来
+  node install.mjs list                看这台机器能用哪些工具
 
 默认安装目录：
   Windows  %LOCALAPPDATA%\\Nexi
@@ -68,7 +89,14 @@ if (has('--dev')) {
   process.exit(dev.status ?? 1);
 }
 
-const passthrough = args.filter((a) => a !== '--verify');
+// `npx agentdeck-super install --all` 里的 install 是"装"这个动词，不是宿主 id。
+// 不剥掉的话它会变成 `nexi setup install --all`，然后报 unknown-host: install。
+const positional = args.filter((a) => !String(a).startsWith('-'));
+const VERBS = new Set(['install', 'setup']);
+const verb = VERBS.has(positional[0] || '') ? positional[0] : '';
+const effective = verb ? args.filter((a) => a !== verb) : args;
+
+const passthrough = effective.filter((a) => a !== '--verify');
 const setupArgs = ['setup', ...passthrough];
 
 /* --verify：装完让宿主自己报一遍（这是最硬的证据） */

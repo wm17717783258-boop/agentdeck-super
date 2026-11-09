@@ -1,10 +1,17 @@
 {
   "name": "nexi",
   "description": "Nexi 灵犀：会自己干活的 Agent —— 团队协作、长期记忆、会议、桌宠皮肤市场、操作审计，共 23 个工具。",
-  "version": "1.11.10",
+  "version": "1.11.11",
   "author": {
     "name": "wm17717783258-boop"
   },
   "homepage": "https://github.com/wm17717783258-boop/agentdeck-super",
-  "keywords": ["agent", "multi-agent", "mcp", "collaboration", "pet", "market"]
+  "keywords": [
+    "agent",
+    "multi-agent",
+    "mcp",
+    "collaboration",
+    "pet",
+    "market"
+  ]
 }
