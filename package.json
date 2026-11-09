@@ -54,6 +54,7 @@
     "verify:console": "node tools/verify-console.mjs --pkg .",
     "verify:mcp-http": "node tools/verify-mcp-http.mjs",
     "verify:pay": "node pro/tools/verify-pay.mjs",
+    "verify:twoinstances": "node tools/verify-twoinstances.mjs",
     "guard:boundary": "node tools/guard-boundary.mjs",
     "verify:security": "node tools/verify-security.mjs",
     "verify:all": "node tools/verify-all.mjs"
