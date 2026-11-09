@@ -29,6 +29,13 @@ const NO_RECORD = argv.includes('--no-record');
 /** 每个验收脚本：名字 / 命令 / 它负责写哪份证据 / 大概要多久 */
 const SUITES = [
   {
+    // 放在最前面：边界破了，后面跑多少组都白跑（发出去的包根本不是这份代码）。
+    id: 'boundary',
+    what: '开源/闭源物理边界：公开包不含 pro/、核心不静态引用闭源层、loadPro 契约对齐、pro 未被 git 跟踪',
+    cmd: ['tools/guard-boundary.mjs'],
+    evidence: [],
+  },
+  {
     id: 'gate',
     what: '全量回归（tests/*.test.mjs 全跑）+ 红队越权用例',
     cmd: ['tools/verify-security.mjs'],
@@ -68,8 +75,9 @@ const SUITES = [
   {
     id: 'pay',
     what: '支付链路端到端：真 HTTP 网关 → 到账 → 解锁 → 幂等 → 退款收回（含「环境未配」诚实失败）',
-    cmd: ['tools/verify-pay.mjs'],
+    cmd: ['pro/tools/verify-pay.mjs'],
     evidence: [`pay-${ver}.txt`],
+    optional: true,   // 支付适配器属闭源商业层（pro/），没装 pro 就跳过
   },
   {
     id: 'visit',
@@ -80,8 +88,9 @@ const SUITES = [
   {
     id: 'meeting',
     what: '三个 Agent 真开一场会：意见→分歧→投票→决议→落任务（含治理闸门反例）',
-    cmd: ['tools/verify-meeting.mjs'],
+    cmd: ['pro/tools/verify-meeting.mjs'],
     evidence: [`meeting-3agent-${ver}.txt`],
+    optional: true,   // 云端会议属闭源商业层（pro/）
   },
   {
     id: 'installed',
@@ -113,8 +122,9 @@ const SUITES = [
   {
     id: 'billing-live',
     what: '支付代码路径：照 Stripe 在线 API 形状应答，验请求/鉴权/字段/验签/退款/失败处理',
-    cmd: ['tools/verify-billing-live.mjs'],
+    cmd: ['pro/tools/verify-billing-live.mjs'],
     evidence: [`billing-live-${ver}.txt`],
+    optional: true,   // 支付渠道适配属闭源商业层（pro/）
   },
   {
     id: 'everything',

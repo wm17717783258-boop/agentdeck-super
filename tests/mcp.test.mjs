@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HUB_TOOL_ORDER } from '../lib/hub.js';
+import { expectTools } from './_pro.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..');
@@ -119,8 +120,8 @@ test('MCP：initialize 握手 → tools/list → 真调 team_board 建组加任�
     const list = await client.rpc('tools/list');
     const names = list.result.tools.map((t) => t.name);
     // 宿主能看到的工具面必须和 Hub 的权威清单逐一对齐——少一个、多一个都算契约破了。
-    assert.deepEqual(names.slice().sort(), HUB_TOOL_ORDER.slice().sort(), `tools/list 与 HUB_TOOL_ORDER 不一致（实际：${names.join(',')}）`);
-    for (const must of ['team_board', 'agent_join', 'team_orchestrate', 'super_agent', 'deck_room', 'deck_license', 'pet_visit', 'pet_meeting', 'pet_skin', 'twin_remember', 'twin_recall', 'twin_brief', 'twin_forget', 'twin_habit', 'deck_meeting', 'deck_automation']) {
+    assert.deepEqual(names.slice().sort(), expectTools(HUB_TOOL_ORDER).slice().sort(), `tools/list 与 HUB_TOOL_ORDER 不一致（实际：${names.join(',')}）`);
+    for (const must of expectTools(['team_board', 'agent_join', 'team_orchestrate', 'super_agent', 'deck_room', 'deck_license', 'pet_visit', 'pet_meeting', 'pet_skin', 'twin_remember', 'twin_recall', 'twin_brief', 'twin_forget', 'twin_habit', 'deck_meeting', 'deck_automation'])) {
       assert.ok(names.includes(must), `tools/list 缺 ${must}（实际：${names.join(',')}）`);
     }
     for (const t of list.result.tools) {

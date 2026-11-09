@@ -18,6 +18,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { PRO_ONLY_TOOLS, hasPro } from './_pro.mjs';
+
 const BASE = process.env.NEXI_E2E_BASE || 'http://127.0.0.1:58399';
 const EXPLICIT_BASE = Boolean(String(process.env.NEXI_E2E_BASE || '').trim());
 const EXTERNAL_SKIP = '未设置 NEXI_E2E_BASE：外部真宿主集成测试默认跳过（避免误连到别的进程或旧版本）';
@@ -75,6 +77,10 @@ const CASES = {
   team_orchestrate: { goal: '遍历测试编排', plan: [{ id: 't1', title: '遍历子任务', role: 'worker' }], dryRun: true },
   pet_meeting: { topic: '遍历测试桌宠会议', rounds: 1, maxTasks: 1 },
 };
+
+// 开源形态下这些工具的实现在闭源层，宿主根本没注册 —— 拿它们去真调是"打一个不存在的门"，
+// 不算产品缺陷。所以按形态把整组剔掉，而不是把失败当成噪音放过。
+if (!hasPro()) for (const name of PRO_ONLY_TOOLS) delete CASES[name];
 
 let reachable = false;
 

@@ -26,6 +26,8 @@
     "!docs/evidence",
     "tests",
     "!tests/fixtures/**/node_modules",
+    "!pro",
+    "!pro/**",
     "cordis.patch.yml",
     "install.mjs",
     "server.json",
@@ -51,7 +53,8 @@
     "verify:recovery": "node tools/verify-recovery.mjs --pkg .",
     "verify:console": "node tools/verify-console.mjs --pkg .",
     "verify:mcp-http": "node tools/verify-mcp-http.mjs",
-    "verify:pay": "node tools/verify-pay.mjs",
+    "verify:pay": "node pro/tools/verify-pay.mjs",
+    "guard:boundary": "node tools/guard-boundary.mjs",
     "verify:security": "node tools/verify-security.mjs",
     "verify:all": "node tools/verify-all.mjs"
   },

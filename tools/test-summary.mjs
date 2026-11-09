@@ -8,21 +8,34 @@
  * 用法：node tools/test-summary.mjs
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TEST_DIR = join(PKG, 'tests');
-const files = readdirSync(TEST_DIR)
-  .filter((name) => name.endsWith('.test.mjs'))
-  .sort()
-  .map((name) => join(TEST_DIR, name));
+
+/** 收集某个目录下的测试文件；目录不存在就返回空（开源版没有 pro/ 是正常状态）。 */
+function collect(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.test.mjs'))
+    .sort()
+    .map((name) => join(dir, name));
+}
+
+// 核心测试永远跑；闭源商业层测试只在装了 pro/ 时才跑。
+const CORE_FILES = collect(join(PKG, 'tests'));
+const PRO_FILES = collect(join(PKG, 'pro', 'tests'));
+const files = [...CORE_FILES, ...PRO_FILES];
 
 if (!files.length) {
-  console.error(`没有找到测试文件：${TEST_DIR}`);
+  console.error(`没有找到测试文件：${join(PKG, 'tests')}`);
   process.exit(2);
 }
+
+const proCount = new Set(PRO_FILES).size;
+console.log(`测试范围：核心 ${CORE_FILES.length} 个文件`
+  + (proCount ? ` + 商业层 ${proCount} 个文件（pro/）` : '（未安装商业层）'));
 
 // 不要在子进程里把 "tests/*.test.mjs" 原样交给 Node：Windows 上 shell 不参与，
 // Node 会把它当成一个字面文件名。这里先枚举真实文件，再显式传进去。

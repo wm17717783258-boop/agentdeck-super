@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { apply } from '../lib/index.js';
+import { hasPro } from './_pro.mjs';
 
 /** 起一个真插件实例（真工具、真落盘），拿到工具名 → 定义。 */
 async function boot() {
@@ -182,7 +183,10 @@ test('deck_automation：add → list 看得到 → stop → status 真的停了 
 
 /* ── 会议：开 → 交意见 → 读回来 → 议程 → 结会 ─────────────────────────── */
 
-test('deck_meeting：开会 → 交意见 → show 读得到 → 结会状态真的变 concluded', async () => {
+// 会议实现整个在闭源层（pro/meeting/**），开源包里没有 —— 不是坏了，是不带。
+test('deck_meeting：开会 → 交意见 → show 读得到 → 结会状态真的变 concluded', {
+  skip: !hasPro() ? '开源形态（未装 pro/）：会议实现不在核心包里' : false,
+}, async () => {
   const b = await boot();
   try {
     const opened = await b.text('deck_meeting', { action: 'open', topic: '副作用会议', participants: [{ name: 'a' }] });
@@ -253,6 +257,15 @@ test('deck_audit：做过的事真能在审计流里查到', async () => {
 test('deck_market：catalog 列出货架 → orders 是空的（没买过）→ 对得上', async () => {
   const b = await boot();
   try {
+    if (!hasPro()) {
+      // 开源形态：市场实现不在包里。这时工具**必须**如实说「需要 Nexi Pro」，
+      // 不能假装"货架是空的"——那种"空"会让用户以为自己的皮肤丢了。
+      for (const action of ['catalog', 'orders', 'health']) {
+        const out = await b.text('deck_market', { action });
+        assert.match(out, /Nexi Pro|未配|渠道/, `${action} 没说清为什么用不了：${out.slice(0, 200)}`);
+      }
+      return;
+    }
     const cat = await b.text('deck_market', { action: 'catalog' });
     assert.match(cat, /货架|套/, `catalog 拿不到：${cat.slice(0, 150)}`);
 

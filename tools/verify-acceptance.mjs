@@ -156,7 +156,7 @@ const ITEMS = [
   {
     id: 'meeting',
     feature: '多 Agent 会议（发言→表决→决议落成任务）',
-    script: 'tools/verify-meeting.mjs',
+    script: 'pro/tools/verify-meeting.mjs',
     evidence: [`meeting-3agent-${version}.txt`],
     boundary: '会议质量取决于宿主模型；治理闸门已验',
   },
@@ -171,7 +171,7 @@ const ITEMS = [
   {
     id: 'pay',
     feature: '支付链路（到账→解锁→幂等→退款）',
-    script: 'tools/verify-pay.mjs',
+    script: 'pro/tools/verify-pay.mjs',
     evidence: [`pay-${version}.txt`],
     boundary: '本地假网关；本机没有商户号，真钱这条没走通',
   },

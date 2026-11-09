@@ -144,7 +144,7 @@ const REQUIREMENTS = [
     req: '能获得收入',
     status: 'partial',
     how: '发码链路完整（license-cli 签码/验码/记账）；托管 API 已挂进 relay（激活/用量/配额）；市场支持 80/20 分成',
-    evidence: ['tools/license-cli.mjs', 'lib/hosting/index.js', 'lib/market/split.js', 'tests/hosting.test.mjs'],
+    evidence: ['tools/license-cli.mjs', 'lib/hosting/index.js', 'pro/market/split.js', 'tests/hosting.test.mjs'],
     boundary: '**没有真实商户号，没验真扣款**；本地真 HTTP 网关（53/53）和 Stripe 形状适配器（26/26）只证明代码路径。官方托管服务未部署，目前收入仍靠手工发码/自建 relay。',
   },
 ];

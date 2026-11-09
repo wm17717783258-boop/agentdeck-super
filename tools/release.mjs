@@ -234,8 +234,16 @@ const seenOut = seen.out || '';
 if (/E404|is not in this registry/.test(seenOut)) {
   say(`  ✅ npm 上没有 ${pkg.name} —— 名字可用，首次发布会注册它`);
 } else if (seen.ok && seenOut.trim() === VERSION) {
-  say(`  ❌ npm 上已存在 ${pkg.name}@${VERSION} —— 再发会被拒`);
-  say('     解决：先升版本  npm version patch|minor|major --no-git-tag-version');
+  /*
+   * 同一个版本号不可能发第二次。这里必须**当场停**，不能只打印一句 ❌ 继续往下走：
+   * 继续跑会白跑一轮脱敏 + 体检 + 全量测试 + 打包（好几分钟），最后在 npm publish
+   * 那一步才被拒 —— 那几分钟什么都证明不了，还容易让人以为"发布成功了一部分"。
+   */
+  bail('预检', `npm 上已存在 ${pkg.name}@${VERSION}，同一个版本号发不了第二次`, [
+    '先升版本，再重新跑发布：',
+    '  npm version patch|minor|major --no-git-tag-version',
+    '升完顺手把 LICENSING.md / CHANGELOG 里写的版本号一起改掉，别只改 package.json。',
+  ].join('\n'));
 } else if (!seen.ok) {
   say('  ⚠️  查不到 npm 上的版本状态（网络/限流），发布前请自己确认一次：');
   say(`     npm view ${pkg.name} version`);
@@ -257,6 +265,22 @@ if (git.ok) {
 } else {
   say('  ⚠️  不是 git 仓库（无法用 commit 回溯版本来源）');
 }
+
+/*
+ * 闭源边界（代码层）：静态引用 / loadPro 契约 / pro 是否被 git 跟踪。
+ * 打包层还有一道（阶段 4 拿真实清单再查一次）—— 硬红线查两次不嫌多：
+ * 一次赶在动手之前，一次赶在产物出门之前。
+ */
+const boundary = run(process.execPath, ['tools/guard-boundary.mjs', '--skip-pack'], {
+  keep: /规矩|✅|❌|\[/,
+  timeout: 120_000,
+});
+if (!boundary.ok) {
+  bail('预检', '闭源边界守卫不通过',
+    '这是硬红线：按上面写的原因修，别绕过。修完手工确认一次：\n'
+    + '  node tools/guard-boundary.mjs');
+}
+say('  ✅ 闭源边界（代码层）：无静态引用、loadPro 契约对齐、pro/ 未被 git 跟踪');
 
 record('预检', true, `v${VERSION}`);
 
@@ -412,6 +436,41 @@ if (!existsSync(tgzPath)) {
 const sizeMB = (statSync(tgzPath).size / 1024 / 1024).toFixed(2);
 say('');
 say(`  ✅ 产物：${tgz}（${sizeMB} MB）`);
+
+// ── 闭源边界守卫 ──────────────────────────────────────────────
+// 商业层（pro/）绝不允许进公开包。这不是「最好别」，是硬红线：
+// 一旦发出去，AGPL 之下就再也收不回来了（1.11.5–1.11.8 已经吃过一次这个亏）。
+// 用 npm 自己算的文件清单来判断，避免和 files 白名单的语义漂移。
+say('');
+say('  正在核对闭源边界（pro/ 不得进包）…');
+const dryJson = run('npm', ['pack', '--dry-run', '--json'], { timeout: 180_000 });
+if (!dryJson.ok) {
+  bail('打包', '拿不到打包清单（npm pack --dry-run --json 失败）',
+    '这一步是闭源泄露的最后一道闸，拿不到清单就不能发布。');
+}
+let packList = [];
+try {
+  const parsed = JSON.parse(String(dryJson.rawStdout || '').trim());
+  packList = Array.isArray(parsed) && parsed[0] && Array.isArray(parsed[0].files)
+    ? parsed[0].files.map((f) => String(f && f.path || ''))
+    : [];
+} catch (err) {
+  bail('打包', `打包清单解析失败：${String(err && err.message || err).slice(0, 160)}`,
+    '拿不到清单就不能确认没泄露，停止发布。');
+}
+if (!packList.length) {
+  bail('打包', '打包清单是空的', 'npm 输出格式可能变了，先手工确认 npm pack 正常。');
+}
+const leakedPro = packList.filter((p) => p === 'pro' || p.startsWith('pro/'));
+if (leakedPro.length) {
+  bail('打包', `公开包里混进了闭源商业层（${leakedPro.length} 个文件）`,
+    '这是硬红线，必须先修 package.json 的 files 白名单：\n'
+    + `  泄露样本：${leakedPro.slice(0, 6).join('、')}${leakedPro.length > 6 ? ' …' : ''}\n`
+    + '  正确做法：files 里保留 "!pro" 与 "!pro/**"，且不要用通配把根目录全包进来。\n'
+    + '  注意 AGPL 不可撤销 —— 一旦发出去就收不回来了。');
+}
+say(`  ✅ 闭源边界干净：${packList.length} 个文件，pro/ 零命中`);
+
 record('打包', true, `${tgz} ${sizeMB}MB`);
 
 // ─────────────────────────────────────────────────────────────

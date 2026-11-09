@@ -93,11 +93,10 @@ test('交付包：真 npm pack → 中文+空格路径解包 → 全新 HOME 起
     for (const rel of [
       'bin/nexi.mjs',
       'lib/index.js',
-      'lib/sync/delta.js',
+      'lib/pro-resolve.js',
       'lib/pet/persona.js',
       'lib/hosting/index.js',
       'tests/cli.test.mjs',
-      'tests/selfcheck-delta-persist.test.mjs',
       'tests/fixtures/fake-agent.mjs',
       'tests/fixtures/fake-agent.cmd',
       'docs/操作手册.md',
@@ -106,6 +105,12 @@ test('交付包：真 npm pack → 中文+空格路径解包 → 全新 HOME 起
       'LICENSE',
     ]) {
       assert.equal(existsSync(join(pkgDir, rel)), true, `交付包缺文件：${rel}`);
+    }
+
+    // 闭源商业层绝不能出现在公开包里 —— 这是拆分的底线，写进测试来守。
+    for (const forbidden of ['pro', 'pro/billing', 'pro/market', 'pro/sync', 'pro/meeting']) {
+      assert.equal(existsSync(join(pkgDir, forbidden)), false,
+        `公开包里出现了闭源商业层：${forbidden}（打包白名单漏了排除）`);
     }
 
     const dshHome = join(base, '全新机器', 'dsh-home');

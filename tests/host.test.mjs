@@ -17,6 +17,7 @@ import { dirname, join } from 'node:path';
 
 import plugin, { apply, name as pluginName, inject } from '../lib/index.js';
 import { encodeLicense, licensePath } from '../lib/license.js';
+import { expectTools, hasPro } from './_pro.mjs';
 
 /* ── 先把机级目录（授权码、桌宠档案）指到临时 DSH_HOME ─────────────────── */
 
@@ -201,15 +202,25 @@ test('apply() 把九件工具都注册进宿主工具带', async () => {
   const b = await boot();
   try {
     const names = b.state.tools.map((t) => t.name);
-    const expected = [
+    const expected = expectTools([
       'super_agent', 'team_orchestrate', 'agent_join', 'team_board',
       'deck_license', 'deck_room',
       'pet_visit', 'pet_meeting', 'pet_skin',
       // 1.7 M4：跨厂商会议 + 定时/审批/全局停止
       'deck_meeting', 'deck_automation',
-    ];
+    ]);
     for (const want of expected) assert.ok(names.includes(want), `缺工具 ${want}（实际：${names.join('、')}）`);
     assert.equal(new Set(names).size, names.length, '工具名不能重复');
+
+    // 形态检查（拆分后新增）：会议工具整个实现都在闭源层，没装就不该注册；
+    // 但 deck_market 必须一直在 —— 它是免费用户唯一能问到"这东西怎么买"的入口，
+    // 商业层没装时它回一句人话，而不是连同入口一起消失。
+    if (hasPro()) {
+      assert.ok(names.includes('deck_meeting'), '装了商业层却没注册会议工具');
+    } else {
+      assert.ok(!names.includes('deck_meeting'), '没装商业层却注册了 deck_meeting：它会指向一个不存在的实现');
+      assert.ok(names.includes('deck_market'), '开源版丢了 deck_market：用户连"怎么买"都问不到');
+    }
   } finally {
     b.cleanup();
   }

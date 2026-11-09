@@ -73,7 +73,13 @@ test('host → guest → check 全链路走通（两个独立进程，走真实�
     assert.match(host.out, /席位：12（房主 1 席，可加入 11 台客人设备）/, '邀请块应该写清可加入的设备数');
     // 房间建成的标志是"打印了可转发的文本块"，不是房间名（房间名只在内部用）
     assert.ok(host.out.includes('复制下面整段'), 'host 应该给出可转发的说明块');
-    assert.ok(host.out.includes('房间已建好'), 'host 应该明确说房间建好了');
+    /*
+     * 这一句必须等，不能立即断言：说明块和「房间已建好」是**两次** console.log，
+     * 也就是两次 write。全量回归时 CPU 挤，第二段可能晚几十毫秒才到 —— 立即断言
+     * 会偶发红（真机全量跑就红过一次）。等它出现，断言一点没放松。
+     */
+    const roomReady = await waitFor(() => host.out, '房间已建好', { timeoutMs: 15000 });
+    assert.ok(roomReady, `host 应该明确说房间建好了。输出：\n${host.out}`);
 
     // 2) 中继真的可达（用 host 打印的地址从外面请求一次）
     const readyMatch = /中继已就绪：[^\r\n]*?:(\d{2,5})/.exec(host.out);
@@ -89,8 +95,11 @@ test('host → guest → check 全链路走通（两个独立进程，走真实�
     const guestOk = await waitFor(() => guest.out, /进房并同步成功|进房成功/, { timeoutMs: 30000 });
     assert.ok(guestOk, `guest 没成功进房。输出：\n${guest.out}\n${guest.err}`);
     assert.ok(!/没成功/.test(guest.out), `guest 报进房失败：${guest.out}`);
-    assert.match(guest.out, /设备席位名：乙机-财务/, 'guest 应打印真正占席的设备名');
-    assert.match(guest.out, /已占用 1 席（乙机-财务）/, '成功输出应说明谁占了哪一席');
+    // 同理：进房成功的下一行是另一次 write，等它到齐再断言（不放松，只去掉竞态）。
+    assert.ok(await waitFor(() => guest.out, /设备席位名：乙机-财务/, { timeoutMs: 10000 }),
+      `guest 应打印真正占席的设备名。输出：\n${guest.out}`);
+    assert.ok(await waitFor(() => guest.out, /已占用 1 席（乙机-财务）/, { timeoutMs: 10000 }),
+      `成功输出应说明谁占了哪一席。输出：\n${guest.out}`);
 
     // 4) host 侧 check：应该能看到客人的报到
     const hostCheck = launch([PAIR, 'check'], { env: hostEnv });

@@ -70,16 +70,32 @@ test('release：预检能区分「包名未注册」和「版本已存在」', (
     '必须区分 404（名字可用）和版本已存在（必须升版本），否则会误判可发');
 });
 
-test('release --dry-run 真跑：退出码 0 且不改文件', () => {
+test('release --dry-run 真跑：该成功就成功，该拦就拦，反正不许改文件', () => {
   const pkgBefore = readFileSync(join(PKG, 'package.json'), 'utf8');
   const r = spawnSync(process.execPath, [RELEASE, '--dry-run'], {
     cwd: PKG, encoding: 'utf8', timeout: 180_000, windowsHide: true,
   });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  assert.equal(r.status, 0, `--dry-run 应当成功退出，实际：\n${out.slice(-800)}`);
   assert.match(out, /阶段 0/, '必须打印预检阶段');
-  assert.match(out, /--dry-run：预检完就停/, '必须明确说没有改动文件');
-  // package.json 不能被动过
+
+  /*
+   * 这条曾经写成"必须退出 0"，结果它其实是**看 npm 状态的**：
+   * 当前版本已经发过 → 预检按设计硬拦（退出 1 + 让你升版本）。
+   * 那是正确行为，不是缺陷；把"版本已存在"当成失败会让全量回归在真实环境里随机变红
+   * （同一台机器上刚才绿、过一会儿红，只是因为 npm view 有没有连通）。
+   * 所以按状态分支断言：两种情况都要断言得死死的，只是断言的内容不同。
+   */
+  if (/npm 上已存在 \S+@\S+/.test(out)) {
+    assert.equal(r.status, 1, `版本已存在时必须拦下来，实际退出码 ${r.status}：\n${out.slice(-800)}`);
+    assert.match(out, /先升版本/, '拦下来还不够，必须告诉人怎么解决（升版本）');
+    assert.doesNotMatch(out, /--dry-run：预检完就停/, '已经拦下了就不该再说"预检完就停"');
+  } else {
+    assert.equal(r.status, 0, `--dry-run 应当成功退出，实际：\n${out.slice(-800)}`);
+    assert.match(out, /--dry-run：预检完就停/, '必须明确说没有改动文件');
+    assert.match(out, /闭源边界（代码层）/, '预检必须跑闭源边界守卫（拆分后的硬红线）');
+  }
+
+  // 两种情况都一样：package.json 不能被动过
   assert.equal(readFileSync(join(PKG, 'package.json'), 'utf8'), pkgBefore,
     '--dry-run 不该改动 package.json');
 });
