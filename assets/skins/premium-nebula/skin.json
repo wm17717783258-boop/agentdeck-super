@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "premium-nebula",
+  "name": "星云",
+  "price": 28,
+  "license": "premium",
+  "sprite": "sprite.svg",
+  "accent": "#ff7ae0",
+  "author": "AgentDeck 官方",
+  "version": "1.0.0",
+  "description": "会缓慢自转的星云环与尘埃带"
+}

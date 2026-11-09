@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "premium-jade",
+  "name": "青玉",
+  "price": 38,
+  "license": "premium",
+  "sprite": "sprite.svg",
+  "accent": "#5fe3b0",
+  "author": "AgentDeck 官方",
+  "version": "1.0.0",
+  "description": "温润青玉与流动云纹，暗处会透一点光"
+}

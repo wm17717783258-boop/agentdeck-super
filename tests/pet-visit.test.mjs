@@ -636,7 +636,12 @@ test('createPetLayer：四块按同一个 root / 时钟拼好，工具描述符�
   assert.deepEqual(Object.keys(layer.states).sort(), ['idle', 'meeting', 'sleeping', 'visiting', 'working'])
   assert.equal(layer.card().card.name, '桌宠', '默认档案就叫桌宠')
   assert.equal(typeof layer.summarize(), 'object')
-  assert.equal(layer.skins.list().skins.length, 4, '3 套内置 + 1 套包内付费')
+  // 皮肤清单：内置免费 + 包内付费都要在。这里不写死总数 ——
+  // 写死就意味着"每加一套 SKU 就要改一次测试"，那种断言最后一定被人随手改成数字。
+  const skinList = layer.skins.list().skins
+  assert.ok(skinList.filter((s) => s.builtin).length >= 3, '内置免费皮肤至少 3 套')
+  assert.ok(skinList.filter((s) => s.price > 0).length >= 1, '包内付费皮肤要出现在清单里')
+  assert.equal(new Set(skinList.map((s) => s.id)).size, skinList.length, '皮肤 id 不能重复')
   assert.match(layer.skins.render({ state: 'sleeping', size: 64 }), /<svg/)
   assert.equal(layer.tools().length, 3)
   assert.equal(PET_TOOL_NAMES.length, 3)

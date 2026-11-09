@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "premium-ember",
+  "name": "余烬",
+  "price": 48,
+  "license": "premium",
+  "sprite": "sprite.svg",
+  "accent": "#ffa552",
+  "author": "AgentDeck 官方",
+  "version": "1.0.0",
+  "description": "暗红炉膛里的余烬与上浮火星"
+}
