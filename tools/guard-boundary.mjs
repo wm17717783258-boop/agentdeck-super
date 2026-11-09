@@ -47,17 +47,21 @@ const AS_JSON = argv.includes('--json');
  * 闭源层的契约清单：`loadPro(spec)` 允许出现的全部 spec。
  * 加一个 pro 模块 → 这里加一行；改名字 → 这里和调用点一起改。
  * 少了它，"改名字忘了改调用点"这种错会静默降级，线上永远发现不了。
+ *
+ * 1.11.9 重划边界后的清单（买家侧全部开源，只留卖家侧与渠道）：
+ *   · market/index.js 已从闭源层移除 —— 货架/账本/下单/人工确认/退款/分账搬回 lib/market/
+ *   · billing/from-env.js 新增 —— 读 AGENTDECK_PAY_* 拼渠道适配器，属渠道细节
  */
 export const PRO_SPECS = Object.freeze([
-  'billing/index.js',   // 在线支付渠道（stripe / wechat / alipay / manual）
-  'market/index.js',    // 皮肤市场门面（货架 / 下单 / 订单 / 退款）
-  'market/themes.js',   // 主题包（皮肤 + 音效 + 动作打包卖）
-  'market/invoice.js',  // 发票数据
-  'market/reconcile.js',// 渠道对账单 ↔ 本机订单逐笔勾对
-  'sync/index.js',      // 多设备加密同步：快照打包
-  'sync/delta.js',      // 多设备加密同步：增量与冲突
-  'meeting/index.js',   // 跨厂商会议引擎
-  'meeting/tool.js',    // deck_meeting 工具本体
+  'billing/index.js',    // 在线支付渠道抽象层（stripe / wechat / alipay / manual 路由）
+  'billing/from-env.js', // 从环境变量认出真实渠道（billingFromEnv / billingHealth）
+  'market/themes.js',    // 主题包（皮肤 + 音效 + 动作打包卖）
+  'market/invoice.js',   // 发票数据
+  'market/reconcile.js', // 渠道对账单 ↔ 本机订单逐笔勾对
+  'sync/index.js',       // 多设备加密同步：快照打包
+  'sync/delta.js',       // 多设备加密同步：增量与冲突
+  'meeting/index.js',    // 跨厂商会议引擎
+  'meeting/tool.js',     // deck_meeting 工具本体
 ]);
 
 /** 扫描范围：这些目录里的代码会进公开包（src/ 也扫，前端一旦 import 后端闭源层同样炸）。 */

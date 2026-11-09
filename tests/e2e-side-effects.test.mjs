@@ -257,15 +257,10 @@ test('deck_audit：做过的事真能在审计流里查到', async () => {
 test('deck_market：catalog 列出货架 → orders 是空的（没买过）→ 对得上', async () => {
   const b = await boot();
   try {
-    if (!hasPro()) {
-      // 开源形态：市场实现不在包里。这时工具**必须**如实说「需要 Nexi Pro」，
-      // 不能假装"货架是空的"——那种"空"会让用户以为自己的皮肤丢了。
-      for (const action of ['catalog', 'orders', 'health']) {
-        const out = await b.text('deck_market', { action });
-        assert.match(out, /Nexi Pro|未配|渠道/, `${action} 没说清为什么用不了：${out.slice(0, 200)}`);
-      }
-      return;
-    }
+    /*
+     * 1.11.9 起重划边界：货架 / 账本 / 下单 / 退款全在开源侧，**两种形态下都该能用**。
+     * 所以这里不再按 hasPro() 分支 —— 免费版拿不到货架才是缺陷，不是"正常降级"。
+     */
     const cat = await b.text('deck_market', { action: 'catalog' });
     assert.match(cat, /货架|套/, `catalog 拿不到：${cat.slice(0, 150)}`);
 
@@ -274,6 +269,11 @@ test('deck_market：catalog 列出货架 → orders 是空的（没买过）→ 
 
     const health = await b.text('deck_market', { action: 'health' });
     assert.match(health, /未配|渠道/, 'health 没说清配没配');
+    // 没配在线渠道时，必须把"人工渠道现在就能收钱"摆出来 ——
+    // 否则用户会以为这功能是坏的，而实际上它只是没配商户号。
+    if (/未配置/.test(health)) {
+      assert.match(health, /人工渠道|place/, '没配在线渠道时要指出人工收款这条路');
+    }
   } finally {
     b.done();
   }
