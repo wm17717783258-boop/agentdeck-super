@@ -18,7 +18,10 @@ internal/
 .agentdeck-issuer/
 policy.json
 audit.jsonl
-market/
+# 只忽略仓库根的运行时数据目录。
+# 必须写成 /market/ —— 写成 market/ 会连 lib/market/（买皮肤/下单/退款核心）一起吞掉，
+# 那样推上 GitHub 的开源版就缺了整整一层，clone 下来直接起不来。
+/market/
 
 # 编辑器 / 系统
 .vscode/

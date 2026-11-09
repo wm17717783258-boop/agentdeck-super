@@ -16,6 +16,7 @@
  *   3. 每一处 `loadPro('x')` 的目标都必须在本文件顶部的契约清单里。
  *      改名字忘了改调用点，会在开源形态静默降级成"未安装商业层"，比报错更难发现。
  *   4. `pro/` 不许被 git 跟踪（公开仓库的红线），且必须被 .gitignore 覆盖。
+ *   5. 开源核心源码不许被 .gitignore 吞掉（`.gitignore` 里 `market/` 会连 `lib/market/` 一起吞）。
  *
  * 用法：
  *   node tools/guard-boundary.mjs              # 全量（含真实 npm pack，约 5–20 秒）
@@ -219,7 +220,11 @@ function checkPack() {
     return;
   }
   // 反向检查：公开包里必须真有核心文件。全被排除掉的"干净"是另一种事故。
-  const mustHave = ['lib/index.js', 'lib/pro-resolve.js', 'bin/nexi.mjs', 'package.json', 'LICENSE'];
+  const mustHave = [
+    'lib/index.js', 'lib/pro-resolve.js', 'bin/nexi.mjs', 'package.json', 'LICENSE',
+    // 1.11.9 起重划边界：买家侧市场核心必须在公开包里
+    'lib/market/index.js', 'lib/market/purchase.js', 'lib/market/store.js', 'lib/market/catalog.js',
+  ];
   const missing = mustHave.filter((p) => !list.includes(p));
   if (missing.length) {
     fail('公开包缺核心文件', missing.join('、'), 'files 白名单把该发的东西排掉了：这样的包装上跑不起来。');
@@ -263,9 +268,71 @@ function checkGit() {
   notes.push('规矩 4 通过：git 零跟踪 + .gitignore 已覆盖');
 }
 
+/**
+ * 规矩 5：开源核心源码**必须在 git 里** —— 不许被 .gitignore 悄悄吞掉。
+ *
+ * 为什么这条是硬红线：`.gitignore` 里写 `market/` 不带前导斜杠，会匹配**任意层级**的同名目录，
+ * 于是 `lib/market/`（货架 / 账本 / 下单 / 退款 / 分账，买家侧的全部）一起被忽略。
+ * 后果不是"少一个文件"：推上 GitHub 的开源版缺整整一层，clone 下来 import 直接 MODULE_NOT_FOUND，
+ * 而本机测试全绿（文件还在盘上）—— 这种事故在本地永远测不出来，只能靠闸门。
+ *
+ * 判据用 `git check-ignore --no-index --stdin`：只看规则、不看索引，
+ * 所以"还没 git add"和"已经被忽略"能区分得开。
+ */
+function checkCoreTracked() {
+  if (!existsSync(join(ROOT, '.git'))) {
+    notes.push('规矩 5 跳过：这里不是 git 工作区');
+    return;
+  }
+  const CORE_DIRS = ['lib', 'bin', 'mcp', 'tools', 'tests', 'src', 'scripts'];
+  const CORE_ROOT_FILES = [
+    'package.json', 'LICENSING.md', 'LICENSE', 'README.md',
+    'install.mjs', 'cordis.patch.yml', 'server.json',
+  ];
+  const candidates = [];
+  for (const dir of CORE_DIRS) {
+    const abs = join(ROOT, dir);
+    if (!existsSync(abs)) continue;
+    for (const file of walk(abs)) candidates.push(relative(ROOT, file).replace(/\\/g, '/'));
+  }
+  for (const f of CORE_ROOT_FILES) if (existsSync(join(ROOT, f))) candidates.push(f);
+  if (!candidates.length) {
+    notes.push('规矩 5 跳过：没找到源码文件');
+    return;
+  }
+  const r = spawnSync('git', ['check-ignore', '--no-index', '--stdin'], {
+    cwd: ROOT, input: candidates.join('\n'), encoding: 'utf8',
+  });
+  if (r.status !== 0 && r.status !== 1) {
+    notes.push(`规矩 5 跳过：git check-ignore 不可用（退出码 ${r.status}）`);
+    return;
+  }
+  const ignored = String(r.stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  if (ignored.length) {
+    // 按目录聚一下，报错时人能一眼看出是哪条规则误伤
+    const byTop = new Map();
+    for (const f of ignored) {
+      const key = f.split('/').slice(0, 2).join('/');
+      if (!byTop.has(key)) byTop.set(key, 0);
+      byTop.set(key, byTop.get(key) + 1);
+    }
+    fail(
+      '开源核心源码被 .gitignore 吞掉',
+      `${ignored.length} 个文件，例如：${ignored.slice(0, 6).join('、')}`
+        + `\n分布：${[...byTop].map(([k, n]) => `${k}(${n})`).join('、')}`,
+      '这些文件在盘上、测试也全绿，但 git 里没有 —— 推上去的开源版就缺这一层，clone 下来起不来。'
+        + '把 .gitignore 里那些不带前导斜杠的目录规则改成锚定根目录（例如 `market/` → `/market/`），'
+        + '再 git add 相应源码。',
+    );
+    return;
+  }
+  notes.push(`规矩 5 通过：${candidates.length} 个核心源码文件均未被忽略`);
+}
+
 checkStaticImports();
 checkProSpecs();
 checkGit();
+checkCoreTracked();
 if (!SKIP_PACK) checkPack();
 
 if (AS_JSON) {
