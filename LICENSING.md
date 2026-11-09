@@ -37,6 +37,7 @@ Nexi 灵犀 / `agentdeck-super` 是**双许可 + 分层**的结构：开源核�
 **这部分代码物理上不在公开仓库与公开包里**（`pro/` 已被 `.gitignore` 与打包白名单双重排除，`pro/package.json` 标了 `private: true` / `UNLICENSED`，从里面跑 `npm publish` 会被直接拒）。
 
 本仓库对它的唯一依赖是 `lib/pro-resolve.js` 一个**可失败的加载器**：装得到就用，装不到就降级，绝不崩。
+`pro/` 自己也有一份**本地** git 历史（`pro/.git`），只用于误删/误清理后的还原，**永远不推任何公开远端**。
 **核心代码里不允许出现任何指向 `pro/` 的静态 `import`** —— 这条由 `tools/guard-boundary.mjs` 强制（`npm test` 与发布预检都会跑它）。
 
 | 模块 | 内容 |
