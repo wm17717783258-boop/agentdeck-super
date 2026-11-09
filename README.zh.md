@@ -6,9 +6,20 @@
 
 > 一个装在 DeepSeek Harness 里的插件：**给你一个什么活都能自己干的超级 Agent，再给你一间谁都能进来干活的作战室。**
 >
-> **已上 npm，一条命令装**：`npx -y agentdeck-super@latest --all`
-> 离线/内网用交付包：`node install.mjs --bundle .\agentdeck-super-1.11.9.tgz`
+> **三种装法，挑一个（都能用）**
 >
+> | 你手上有什么 | 复制这一行 |
+> | --- | --- |
+> | **Claude Code** | `/plugin install nexi --marketplace wm17717783258-boop/agentdeck-super` |
+> | 任意电脑，最省事 | `npx -y agentdeck-super@latest --all` |
+> | 已经在用 DSH | `dsh plugin add agentdeck-super` |
+>
+> **装完跑一句 `nexi doctor`** —— 它用人话告诉你这台机器能不能用；
+> 不能用会直说差在哪，最后给你一段可以原样发给我的报告。
+>
+> 多台设备要测：每台都重复上面这一行，再各跑一次 `nexi doctor`。
+> 完整步骤见 [`docs/装机和多设备测试.md`](docs/装机和多设备测试.md)。
+
 > 开源仓库（核心 AGPL-3.0 / 适配器 Apache-2.0，见 [`LICENSING.md`](LICENSING.md)）：https://github.com/wm17717783258-boop/agentdeck-super
 
 > **想知道每件事做到哪一步？看 [`docs/功能现状核对表.md`](docs/功能现状核对表.md)。**

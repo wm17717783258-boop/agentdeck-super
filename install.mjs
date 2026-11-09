@@ -101,6 +101,10 @@ console.log('='.repeat(56));
 if (code === 0) {
   console.log(dryRun ? '干跑完成；上面的路径只是计划，什么都没写。' : '装好了。下一步：');
   console.log('');
+  console.log('  0) 先确认这台机器到底行不行（最省事的一条）：');
+  console.log('       npx -y agentdeck-super doctor');
+  console.log('     它用人话告诉你哪里不对；出问题就把最后那个方框整段发出来。');
+  console.log('');
   console.log('  1) 让宿主自己确认（可选，但这是最硬的证据）：');
   console.log('       node install.mjs --verify');
   console.log('     或者手动跑：');

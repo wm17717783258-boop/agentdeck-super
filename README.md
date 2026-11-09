@@ -6,9 +6,20 @@
 
 > A DeepSeek Harness plugin that gives you **one agent that can actually do the work**, **a war room where other agents can join through a supported protocol**, and **a room your teammates can walk into from a link**.
 >
-> On npm now — one line on any machine: `npx -y agentdeck-super@latest --all`
-> DSH: `dsh plugin add agentdeck-super`
+> **Three ways to install — pick one**
 >
+> | You have | Run this |
+> | --- | --- |
+> | **Claude Code** | `/plugin install nexi --marketplace wm17717783258-boop/agentdeck-super` |
+> | Any machine, simplest | `npx -y agentdeck-super@latest --all` |
+> | Already on DSH | `dsh plugin add agentdeck-super` |
+>
+> **Then run `nexi doctor`** — it tells you, in plain words, whether this machine is usable;
+> if not, it says exactly what is missing and prints a report you can paste back.
+>
+> Testing on several machines: repeat the same line on each, then run `nexi doctor` there.
+> Full walkthrough: [`docs/install-and-multi-device.md`](docs/install-and-multi-device.md).
+
 > Source (AGPL-3.0 core, Apache-2.0 adapters — see [`LICENSING.md`](LICENSING.md)): https://github.com/wm17717783258-boop/agentdeck-super
 
 | Capability | What it means |

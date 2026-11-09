@@ -16,7 +16,8 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -72,6 +73,7 @@ function parseFlags(args) {
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
     if (a === '--all') flags.all = true;
+    else if (a === '--quick') flags.quick = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--force') flags.force = true;
     else if (a === '--json') flags.json = true;
@@ -106,34 +108,163 @@ async function hubOptionsFromEnv() {
   };
 }
 
-async function cmdDoctor() {
-  const checks = [];
-  const version = await readVersion();
-  checks.push({ name: 'node', ok: Number(process.versions.node.split('.')[0]) >= 22, detail: process.versions.node });
-  checks.push({ name: 'nexi', ok: true, detail: version });
-
-  let hub = null;
+/** 宿主配置文件里到底有没有 nexi —— 只看「宿主装没装」会漏掉最关键的一步。 */
+function nexiRegistered(host) {
+  if (!host || !host.installed || !host.path) return false;
   try {
-    hub = await createHub(await hubOptionsFromEnv());
-    const tools = hub.list().map((t) => t.name);
-    checks.push({ name: 'hub', ok: tools.length > 0, detail: `${tools.length} 个工具`, tools });
+    return /nexi/i.test(readFileSync(host.path, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 功能自检：在临时目录里真开一单、真画一遍皮肤。
+ * 只用 mkdtemp，绝不动用户已有的账本/订单 —— 体检不该有副作用。
+ */
+async function functionalProbe() {
+  const out = [];
+  const tmp = mkdtempSync(join(tmpdir(), 'nexi-doctor-'));
+  try {
+    const [{ createMarket }, { createMarketTool }, skinsMod] = await Promise.all([
+      import('../lib/market/index.js'),
+      import('../lib/tools/market.js'),
+      import('../lib/pet/skins.js'),
+    ]);
+
+    const market = createMarket({ root: tmp, billing: null });
+    const tool = createMarketTool({ market, billing: null });
+    const textOf = (r) => (r && typeof r.text === 'string' ? r.text : String(r ?? ''));
+
+    const cat = typeof market.catalog === 'function' ? market.catalog() : { skins: [] };
+    const list = Array.isArray(cat.skins) ? cat.skins : [];
+    const paid = list.filter((s) => Number(s.price) > 0);
+    out.push({ key: '货架', ok: list.length > 0, detail: `${list.length} 套皮肤（付费 ${paid.length} 套）` });
+
+    const pick = paid[0] || list[0];
+    if (pick) {
+      const placed = textOf(await tool.execute({ action: 'place', skinId: pick.id }, {}));
+      const oid = (placed.match(/ord_[A-Za-z0-9_-]+/) || [])[0] || '';
+      out.push({ key: '开单', ok: Boolean(oid), detail: oid ? `${oid}（${pick.name || pick.id}）` : '开不出订单' });
+    } else {
+      out.push({ key: '开单', ok: false, detail: '货架是空的，没东西可开' });
+    }
+
+    const states = skinsMod.SKIN_STATES || [];
+    const all = (skinsMod.listSkins({}) || {}).skins || [];
+    let drawn = 0;
+    for (const s of all) {
+      for (const st of states) {
+        const svg = skinsMod.renderSprite({ skin: s, state: st });
+        if (typeof svg === 'string' && svg.length > 0) drawn += 1;
+      }
+    }
+    const expected = all.length * states.length;
+    out.push({ key: '皮肤图', ok: expected > 0 && drawn === expected, detail: `${drawn}/${expected} 帧画得出来` });
   } catch (err) {
-    checks.push({ name: 'hub', ok: false, detail: err.message });
+    out.push({ key: '功能', ok: false, detail: err.message });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  return out;
+}
+
+/**
+ * 体检。默认输出**给人看**的一段结论（这台机器到底能不能用）；
+ * `--json` 才是机器可读结构 —— 老脚本按它解析，字段照旧不动。
+ * `--quick` 只查"装没装"，不真开单。
+ */
+async function cmdDoctor() {
+  const flags = parseFlags(rest);
+  const version = await readVersion();
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  const nodeOk = nodeMajor >= 22;
+
+  let tools = [];
+  let hubErr = '';
+  try {
+    const hub = await createHub(await hubOptionsFromEnv());
+    tools = hub.list().map((t) => t.name);
+  } catch (err) {
+    hubErr = err.message;
   }
 
-  const hosts = detectHosts();
-  checks.push({
-    name: 'hosts',
-    ok: true,
-    detail: `${hosts.filter((h) => h.installed).length}/${hosts.length} 已安装`,
-    hosts: hosts.map((h) => ({ id: h.id, label: h.label, installed: h.installed, path: h.path })),
-  });
+  const hosts = detectHosts().map((h) => ({ ...h, registered: nexiRegistered(h) }));
+  const live = hosts.filter((h) => h.installed);
+  const wired = live.filter((h) => h.registered);
 
-  const launch = launchCommand();
-  checks.push({ name: 'launch', ok: true, detail: `${launch.command} ${launch.args.join(' ')}` });
+  if (flags.json) {
+    const checks = [];
+    checks.push({ name: 'node', ok: nodeOk, detail: process.versions.node });
+    checks.push({ name: 'nexi', ok: true, detail: version });
+    checks.push({ name: 'hub', ok: tools.length > 0, detail: hubErr || `${tools.length} 个工具`, tools });
+    checks.push({
+      name: 'hosts',
+      ok: true,
+      detail: `${live.length}/${hosts.length} 已安装`,
+      hosts: hosts.map((h) => ({ id: h.id, label: h.label, installed: h.installed, registered: h.registered, path: h.path })),
+    });
+    const launch = launchCommand();
+    checks.push({ name: 'launch', ok: true, detail: `${launch.command} ${launch.args.join(' ')}` });
+    print({ ok: checks.every((c) => c.ok), checks });
+    return checks.every((c) => c.ok) ? 0 : 1;
+  }
 
-  print({ ok: checks.every((c) => c.ok), checks });
-  return checks.every((c) => c.ok) ? 0 : 1;
+  const fn = flags.quick ? [] : await functionalProbe();
+  const lines = [];
+  lines.push(`Nexi 自检 · v${version}`);
+  lines.push('');
+  lines.push('① 运行环境');
+  lines.push(`  ${nodeOk ? '✅' : '❌'} Node ${process.versions.node}${nodeOk ? '' : '（要 22 或更高，去 nodejs.org 装新版）'}`);
+  lines.push(`  ${tools.length ? '✅' : '❌'} ${tools.length} 个工具${hubErr ? `（起不来：${hubErr}）` : ' 都能列出来'}`);
+  lines.push('');
+  lines.push('② 接进宿主了吗');
+  if (!live.length) {
+    lines.push('  ❌ 这台机器没探测到任何支持的宿主');
+    lines.push('     Claude Code / Codex / Gemini CLI / dsh 装一个，再回来跑这条命令');
+  } else {
+    for (const h of live) {
+      lines.push(
+        h.registered
+          ? `  ✅ ${h.label}  已注册`
+          : `  ❌ ${h.label}  宿主装了但没接上 → 跑 nexi install --all`,
+      );
+    }
+    for (const h of hosts.filter((x) => !x.installed)) lines.push(`  ·  ${h.label}  没装，跳过`);
+  }
+  if (!flags.quick) {
+    lines.push('');
+    lines.push('③ 真能干活吗（在临时目录里试，不碰你的数据）');
+    for (const f of fn) lines.push(`  ${f.ok ? '✅' : '❌'} ${f.key}  ${f.detail}`);
+  }
+
+  const bad = [];
+  if (!nodeOk) bad.push('Node 版本太低');
+  if (!tools.length) bad.push('工具起不来');
+  if (!live.length) bad.push('没有可用宿主');
+  else if (!wired.length) bad.push('宿主没接上 nexi');
+  for (const f of fn) if (!f.ok) bad.push(f.key);
+
+  lines.push('');
+  lines.push('────────────────────────────');
+  if (!bad.length) {
+    lines.push('结论：这台机器可以直接用。');
+  } else {
+    lines.push(`结论：还不能用 —— ${bad.join('、')}`);
+    if (bad.includes('宿主没接上 nexi')) lines.push('      修法：nexi install --all');
+  }
+  lines.push('');
+  lines.push('把下面这段复制给我，我一眼就能看出问题在哪：');
+  lines.push('┌────────────────────────────────');
+  lines.push(`│ 机器 ${process.platform}/${process.arch} · node ${process.versions.node}`);
+  lines.push(`│ 版本 ${version}`);
+  lines.push(`│ 宿主 ${hosts.map((h) => `${h.id}=${h.installed ? (h.registered ? 'ok' : '未接') : '没装'}`).join(' ')}`);
+  if (fn.length) lines.push(`│ 功能 ${fn.map((f) => `${f.key}=${f.ok ? 'ok' : '失败'}`).join(' ')}`);
+  else lines.push('│ 功能 （--quick 跳过）');
+  lines.push(`│ 结论 ${bad.length ? 'FAIL' : 'PASS'}`);
+  lines.push('└────────────────────────────────');
+  print(lines.join('\n'));
+  return bad.length ? 1 : 0;
 }
 
 async function cmdList() {

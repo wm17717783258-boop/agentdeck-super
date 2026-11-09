@@ -1,0 +1,14 @@
+{
+  "name": "nexi",
+  "owner": {
+    "name": "wm17717783258-boop"
+  },
+  "description": "Nexi 灵犀 —— 会自己干活的 Agent：多 Agent 小组协作 + MCP 网关 + 桌宠皮肤市场",
+  "plugins": [
+    {
+      "name": "nexi",
+      "source": "./plugins/nexi",
+      "description": "在 Claude Code 里直接用上 Nexi 的 23 个工具（团队协作、记忆、开会、桌宠、皮肤市场、审计）"
+    }
+  ]
+}
