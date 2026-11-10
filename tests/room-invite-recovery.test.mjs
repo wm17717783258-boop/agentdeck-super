@@ -16,6 +16,9 @@ import { createHub } from '../lib/hub.js';
 
 const textOf = (v) => String(v && typeof v === 'object' ? v.text ?? '' : v ?? '');
 
+// 房间会话存"机级"目录：测试一律用临时 DSH_HOME，别碰开发机真实数据。
+process.env.DSH_HOME ||= mkdtempSync(join(tmpdir(), 'nexi-room-home-'));
+
 async function withHub(fn) {
   const root = mkdtempSync(join(tmpdir(), 'adsk-roominv-'));
   const hub = await createHub({ workspace: root, boardRoot: join(root, 'b'), licenseRoot: join(root, 'l'), onLog: () => {} });

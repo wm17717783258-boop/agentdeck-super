@@ -20,6 +20,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = resolve(HERE, '..');
 const PAIR = join(PKG, 'tools', 'nexi-pair.mjs');
 
+// 配对现在会把房间/小组写进"机级"目录（配完 Agent 要能看见）。
+// 测试统一指到临时 DSH_HOME，绝不碰开发机真实数据。
+process.env.DSH_HOME ||= mkdtempSync(join(tmpdir(), 'nexi-pair-home-'));
+
 function launch(args, extraEnv = {}) {
   const child = spawn(process.execPath, args, {
     cwd: PKG,

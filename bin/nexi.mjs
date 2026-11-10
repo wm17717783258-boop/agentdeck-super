@@ -102,6 +102,7 @@ async function hubOptionsFromEnv() {
   return {
     workspace: process.env.NEXI_WORKSPACE || process.cwd(),
     boardRoot: process.env.NEXI_BOARD_ROOT || '',
+    roomRoot: process.env.NEXI_ROOM_ROOT || '',
     petRoot: process.env.NEXI_PET_ROOT || '',
     licenseRoot: process.env.NEXI_LICENSE_ROOT || '',
     onLog: log,

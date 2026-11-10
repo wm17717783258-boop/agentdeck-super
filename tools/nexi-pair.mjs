@@ -28,7 +28,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { hostname, networkInterfaces } from 'node:os';
+import { hostname, networkInterfaces, homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateKeyPairSync } from 'node:crypto';
@@ -154,6 +154,9 @@ export function buildPairHints({ cli = PAIR_CLI } = {}) {
     '要验真实任务交付（可选，但这是唯一能证明"任务真的跨机了"的步骤）：',
     `  ${cli} task add --title "跨机验收任务" --acceptance "乙机看到并领取"`,
     `  两边各跑一次：${cli} sync`,
+    '',
+    '最后回你自己常用的 Agent 里问一句「房间里有谁？」——',
+    '它应该答出「成员 2 人」。命令行通了不等于 Agent 通了，这一步才是。',
   ];
 }
 
@@ -234,6 +237,26 @@ const STATE_FILE = join(STATE_DIR, 'state.json');
 const WORK_DIR = join(STATE_DIR, 'work');
 /** 授权根：必须和 withHub 里传给 licenseRoot 的路径**完全一致**。 */
 const LIC_DIR = join(STATE_DIR, 'lic');
+/**
+ * 机级状态根（和 lib 里的 globalStateRoot 保持一致）。
+ *
+ * 配对不是为了给命令行看个热闹：**配完这台的 Agent 也得进同一间屋**。
+ * 所以房间会话与小组板写机级目录 —— 用户在自己项目里问"房间里有谁"，
+ * Agent 立刻答得上来。以前写进 `.nexi-pair/`：命令说配对成功，
+ * Agent 那边却说"还没配置 relay 地址"（真机踩到）。
+ *
+ * 自动化测试要"同机模拟两台"，靠两个变量分开：
+ *   NEXI_PAIR_HOME  这台"设备"的家目录（等价宿主那边的 DSH_HOME）
+ *   NEXI_PAIR_DIR   配对自己的状态（授权、invite、中转数据）
+ * 只给 NEXI_PAIR_DIR 时，机级根收进配对目录里，绝不碰真实 ~/.dsh ——
+ * 这条**优先于** DSH_HOME：否则"同机两台"会共用一个机级根，测出来的还是单机。
+ */
+const HOME_DIR = process.env.NEXI_PAIR_HOME
+  || (process.env.NEXI_PAIR_DIR
+    ? join(STATE_DIR, 'home')
+    : (process.env.DSH_HOME || join(homedir(), '.dsh')));
+/** 和 lib 里 globalStateRoot 完全同一个算法，否则"配对写的"和"Agent 读的"不是一处。 */
+const DEVICE_ROOT = join(HOME_DIR, 'agentdeck-super');
 
 function readState() {
   try {
@@ -255,7 +278,10 @@ async function withHub(fn) {
   mkdirSync(WORK_DIR, { recursive: true });
   const hub = await createHub({
     workspace: WORK_DIR,
-    boardRoot: join(STATE_DIR, 'board'),
+    // 机级目录：配完这台设备，它的 Agent 就能看见同一个小组、同一间房。
+    // （NEXI_PAIR_DIR 只管配对自己的状态；机级根由 DEVICE_ROOT 决定，见文件头。）
+    boardRoot: DEVICE_ROOT,
+    roomRoot: join(DEVICE_ROOT, 'room'),
     // 必须和写授权码用的 LIC_DIR 是同一个路径，否则"激活了却还说免费版"
     licenseRoot: LIC_DIR,
     onLog: () => {},
@@ -688,6 +714,9 @@ async function cmdGuest() {
     writeState({ role: 'guest', invite, relayUrl: relayUrl || '', guestAt: new Date().toISOString() });
     console.log(`进房并同步成功，已占用 1 席（${deviceName}）。现在两边都跑一次：`);
     console.log(`  ${PAIR_CLI} check`);
+    console.log('');
+    console.log('然后回你自己常用的 Agent 里问一句「房间里有谁？」');
+    console.log('它应该答出「成员 2 人」——这台设备的 Agent 已经在同一间屋里了（1.11.14 起自动）。');
   } else {
     const why = !joinOk ? '进房那一步' : '同步那一步';
     console.log(`没成功（${why}）。把上面的输出发给房主一起看。`);
@@ -720,6 +749,23 @@ async function cmdCheck() {
     console.log(`  可达性：${relayOk ? '连得上' : '连不上（房主那边的窗口是不是关了？）'}`);
   } else {
     console.log('中继：（本机没记过，先跑一次 host 或 guest）');
+  }
+
+  // Agent 那边到底认不认这间屋 —— 这是 1.11.14 修的最后一公里，单独报一行。
+  // 只读机级房间记录，不发请求；读不出来也不影响配对结论。
+  try {
+    const pointer = join(DEVICE_ROOT, 'room', '.agentdeck', 'rooms', 'last.json');
+    if (existsSync(pointer)) {
+      const last = JSON.parse(readFileSync(pointer, 'utf8'));
+      const who = Array.isArray(last.members) ? last.members.length : 0;
+      const rid = String(last.roomId || '');
+      console.log(`Agent 那边：已进房 ${rid ? `${rid.slice(0, 8)}…` : ''}${who ? `（${who} 人）` : ''}`);
+      console.log('  换个目录问它「房间里有谁」也答得上来 —— 这台设备的 Agent 在同一间屋里。');
+    } else {
+      console.log('Agent 那边：还没有房间记录（先跑一次 host 或 guest，它就会写进去）');
+    }
+  } catch {
+    console.log('Agent 那边：房间记录读不出来（不影响配对本身）');
   }
 
   const local = await withHub(async (hub) => {

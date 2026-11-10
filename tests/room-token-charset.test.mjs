@@ -20,6 +20,9 @@ import { encodeLicense } from '../lib/license.js';
 
 const textOf = (v) => String(v && typeof v === 'object' ? v.text ?? '' : v ?? '');
 
+// 房间会话存"机级"目录：测试一律用临时 DSH_HOME，别碰开发机真实数据。
+process.env.DSH_HOME ||= mkdtempSync(join(tmpdir(), 'nexi-room-home-'));
+
 /** 起真 relay + 真房间；返回邀请、relay 地址和真实的 inviteToken。 */
 async function makeRoom() {
   const dir = mkdtempSync(join(tmpdir(), 'adsk-tokchars-'));

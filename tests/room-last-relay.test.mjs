@@ -22,6 +22,10 @@ import { generateKeyPairSync } from 'node:crypto';
 
 const textOf = (v) => String(v && typeof v === 'object' ? v.text ?? '' : v ?? '');
 
+// 房间会话现在存"机级"目录（一台设备一个席位）。测试绝不能碰真实的 ~/.dsh，
+// 否则跑一遍单测就把开发机自己的房间记录改掉了。
+process.env.DSH_HOME ||= mkdtempSync(join(tmpdir(), 'nexi-room-home-'));
+
 /** 起一个真 relay + 真房间，返回 host 端的邀请与地址。 */
 async function makeRoom() {
   const dir = mkdtempSync(join(tmpdir(), 'adsk-lastrelay-'));
@@ -64,7 +68,8 @@ test('进房成功后 last.json 里记下了 relayUrl，且 sync 能自动沿用
     assert.ok(invite.includes('room='), `邀请没拼对：${invite}`);
 
     const guestRoot = join(dir, 'guest');
-    guestHub = await createHub({ workspace: guestRoot, boardRoot: join(dir, 'gb'), licenseRoot: join(dir, 'gl'), onLog: () => {} });
+    // roomRoot 显式指到本用例目录：默认是机级目录，这里要断言落盘位置就必须钉住
+    guestHub = await createHub({ workspace: guestRoot, boardRoot: join(dir, 'gb'), roomRoot: guestRoot, licenseRoot: join(dir, 'gl'), onLog: () => {} });
 
     // 1) 进房（链接里带地址）
     const joinOut = textOf(await guestHub.tools.get('deck_room').execute({ action: 'join', inviteUrl: invite }, { hub: true }));
@@ -92,7 +97,7 @@ test('显式 relayUrl 优先，且会覆盖 last.json 里记的', { timeout: 600
   let guestHub = null;
   try {
     const guestRoot = join(dir, 'guest2');
-    guestHub = await createHub({ workspace: guestRoot, boardRoot: join(dir, 'gb2'), licenseRoot: join(dir, 'gl2'), onLog: () => {} });
+    guestHub = await createHub({ workspace: guestRoot, boardRoot: join(dir, 'gb2'), roomRoot: guestRoot, licenseRoot: join(dir, 'gl2'), onLog: () => {} });
 
     const joinOut = textOf(await guestHub.tools.get('deck_room').execute(
       { action: 'join', inviteUrl: invite, relayUrl },
