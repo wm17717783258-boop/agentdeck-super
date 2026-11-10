@@ -136,7 +136,7 @@ try {
   const fail = stat('fail');
   if (Number(fail) > 0) throw new Error(`有 ${fail} 条用例失败`);
   if (pass === undefined) throw new Error('没解析到用例数 —— 测试输出格式变了，先修这个再发（别让体检显示 pass ?）');
-  ok(`全量用例通过（pass ${pass}，fail ${fail ?? 0}）`);
+  ok(`核心用例通过（pass ${pass}，fail ${fail ?? 0}）—— 不含 pro/ 商业层，那一层由 npm test 覆盖`);
 } catch (err) {
   bad('测试没过，先修测试再发');
   console.log(String(err.stdout || '').split('\n').slice(-25).join('\n'));
@@ -161,8 +161,15 @@ try {
     if (files.some((f) => f.path === m)) ok(`包含 ${m}`);
     else bad(`缺少 ${m}（检查 files 字段）`);
   }
-  const tests = files.filter((f) => f.path.startsWith('tests/')).length;
-  if (tests > 0) log(`    （tests/ 也进包了：${tests} 个文件，无害但可以排除）`);
+  // 包里允许出现的测试文件：只有让用户装完能跑 `npm run smoke` 的那几个，多一个都算 files 漏了排除。
+  const ALLOWED_TESTS = ['tests/e2e-local.mjs', 'tests/fixtures/fake-agent.mjs', 'tests/fixtures/fake-agent.cmd'];
+  const tests = files.filter((f) => f.path.startsWith('tests/'));
+  const stray = tests.filter((f) => !ALLOWED_TESTS.includes(f.path));
+  if (stray.length > 0) {
+    bad(`包里有 ${stray.length} 个不该进包的测试文件（items：${stray.slice(0, 3).map((f) => f.path).join(', ')}…）—— 检查 files 字段`);
+  } else if (tests.length > 0) {
+    log(`    （tests/ 只有 ${tests.length} 个文件：冒烟入口 + 它要的假 Agent，这是故意留的）`);
+  }
 } catch (err) {
   bad('npm pack 失败');
   console.log(String(err.stdout || err.message || '').slice(-1500));
