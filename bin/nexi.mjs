@@ -25,12 +25,15 @@ import { createHub } from '../lib/hub.js';
 import { serveStdio } from '../lib/mcp/server.js';
 import {
   HOSTS, BUILTIN_HOSTS, HOST_REGISTRY_PROBLEMS, detectHosts, installHost, uninstallHost, installAll, launchCommand,
-  buildSnippet, adHocHost, shapeKeys, shapeKeyOf,
+  buildSnippet, adHocHost, shapeKeys, shapeKeyOf, kindFor,
 } from '../lib/connect/hosts.js';
 import { hostsDir, saveCustomHost, removeCustomHost, loadCustomHosts } from '../lib/connect/registry.js';
 import { platformCtx } from '../lib/connect/platform.js';
 import { verifyHost, recordHostsEvidence, summarize } from '../lib/connect/verify.js';
 import { readVersion } from '../lib/version.js';
+import { planSelfRemoval, removeSelf, describePlan } from '../lib/selfremove.js';
+import { logEvent, readTail, clearLogs, logsDir, formatEntry } from '../lib/log.js';
+import { checkForUpdate, updateCheckEnabled } from '../lib/updatecheck.js';
 import {
   defaultHome,
   currentMeta,
@@ -78,6 +81,8 @@ const VALUE_FLAGS = {
   docs: 'docs',
   cli: 'cli',
   name: 'name',
+  tail: 'tail',
+  day: 'day',
 };
 
 function parseFlags(args) {
@@ -97,6 +102,13 @@ function parseFlags(args) {
     else if (a === '--read-only' || a === '--readonly') flags.readOnly = true;
     else if (a === '--no-hosts') flags.noHosts = true;
     else if (a === '--dev') flags.dev = true;
+    else if (a === '--self') flags.self = true;
+    else if (a === '--yes' || a === '-y') flags.yes = true;
+    else if (a === '--keep-state') flags.keepState = true;
+    else if (a === '--keep-hosts') flags.keepHosts = true;
+    else if (a === '--check') flags.check = true;
+    else if (a === '--clear') flags.clear = true;
+    else if (a === '--dir') flags.dir = true;
     else if (typeof a === 'string' && a.startsWith('--') && VALUE_FLAGS[a.slice(2).split('=')[0]]) {
       // 取值型开关必须吃掉后面的值，不能把它当成位置参数——
       // 以前这里没处理，`--out x` 的 x 会掉进 flags._，调用方拿不到，路径就被静默丢掉了。
@@ -282,10 +294,20 @@ async function cmdDoctor() {
       lines.push(`  ✅ 宿主跑的是 ${hostVer}（固定目录，和这条命令同一份）`);
     }
   }
+  // 排障入口：出问题时先让用户跑 nexi logs，比让他复制终端靠谱。
+  lines.push(`  ·  运行日志 ${logsDir()}（nexi logs 看最近 30 条）`);
   if (!flags.quick) {
     lines.push('');
     lines.push('③ 真能干活吗（在临时目录里试，不碰你的数据）');
     for (const f of fn) lines.push(`  ${f.ok ? '✅' : '❌'} ${f.key}  ${f.detail}`);
+  }
+
+  // 可选更新检查：**默认关**。只有 NEXI_UPDATE_CHECK=1 才联网 ——
+  // "不分网络"是硬承诺，不能靠每次体检偷偷连一下 registry 来换一个提示。
+  if (updateCheckEnabled()) {
+    const up = await checkForUpdate({ current: version });
+    if (up.ok && up.outdated) lines.push(`  ·  有新版本 ${up.latest}（当前 ${version}）：nexi update`);
+    else if (up.ok) lines.push('  ·  已是最新版');
   }
 
   const bad = [];
@@ -314,6 +336,14 @@ async function cmdDoctor() {
   else lines.push('│ 功能 （--quick 跳过）');
   lines.push(`│ 结论 ${bad.length ? 'FAIL' : 'PASS'}`);
   lines.push('└────────────────────────────────');
+  logEvent(bad.length ? 'warn' : 'info', 'doctor', {
+    version,
+    node: process.versions.node,
+    tools: tools.length,
+    wired: `${wired.length}/${hosts.length}`,
+    pass: bad.length === 0,
+    bad: bad.join(','),
+  });
   print(lines.join('\n'));
   return bad.length ? 1 : 0;
 }
@@ -399,12 +429,13 @@ async function cmdInstall() {
   if (target === 'custom') {
     const file = explicit || flags.path || '';
     if (!file) {
-      print({ ok: false, hint: '用法：nexi install custom <配置文件路径> --shape mcpServers|servers|context_servers|mcp.servers [--kind json|toml]' });
+      print({ ok: false, hint: `用法：nexi install custom <配置文件路径> --shape ${shapeKeys().join('|')} [--kind json|toml|yaml]` });
       return 2;
     }
     const shape = flags.shape || 'mcpServers';
     if (!shapeKeys().includes(shape)) return print({ ok: false, hint: `shape 可选：${shapeKeys().join(' / ')}` }), 2;
-    const host = adHocHost({ id: 'custom', label: '自定义 Agent', shape, kind: flags.kind === 'toml' ? 'toml' : 'json', path: resolve(file) });
+    const kind = ['toml', 'yaml'].includes(flags.kind) ? flags.kind : (shape.startsWith('yaml.') ? 'yaml' : 'json');
+    const host = adHocHost({ id: 'custom', label: '自定义 Agent', shape, kind, path: resolve(file) });
     const res = installHost('custom', { ...opts, host, path: resolve(file) });
     print(res);
     return res.ok ? 0 : 1;
@@ -417,6 +448,7 @@ async function cmdInstall() {
 
 async function cmdUninstall() {
   const flags = parseFlags(rest);
+  if (flags.self) return cmdUninstallSelf(flags);
   if (flags.all) {
     const out = detectHosts().filter((h) => h.installed).map((h) => ({ id: h.id, ...uninstallHost(h.id, { dryRun: flags.dryRun }) }));
     print(out);
@@ -435,6 +467,92 @@ async function cmdUninstall() {
   const res = uninstallHost(target, { dryRun: flags.dryRun, path: targetPath });
   print(res);
   return res.ok ? 0 : 1;
+}
+
+/**
+ * `nexi uninstall --self` —— 把产品自己卸干净（宿主条目 + 安装目录 + 状态目录）。
+ *
+ * 分两段执行：
+ *   ① 活着的进程把宿主配置里的 nexi 摘掉 —— 它懂各家格式，也只有它能当场做；
+ *   ② 目录交给清理进程（等本进程退出再删）。在 Windows 上删运行中的目录必失败，
+ *      所以"删完立刻回读"这一步由清理进程做，并把结果写进日志，路径打印出来。
+ *
+ * 没有 --yes 就只算计划、不动手：这是不可逆操作，默认不该"手快就没了"。
+ */
+async function cmdUninstallSelf(flags) {
+  const home = typeof flags.home === 'string' ? flags.home : defaultHome();
+  const opts = {
+    installHome: home,
+    stateRoot: undefined,
+    keepState: flags.keepState === true,
+    // 当前跑的是不是固定安装目录里的那份代码？从源码目录跑时不能删源码。
+    selfRoot: PACKAGE_ROOT,
+  };
+  const plan = planSelfRemoval(opts);
+  const installed = flags.keepHosts ? [] : detectHosts().filter((h) => h.installed);
+
+  if (flags.dryRun || !flags.yes) {
+    const text = [
+      `将摘掉宿主条目：${installed.length ? installed.map((h) => h.id).join(', ') : '（无）'}`,
+      '将删除这些目录：',
+      describePlan(plan),
+    ].join('\n');
+    print({
+      ok: true,
+      dryRun: !flags.yes,
+      needConfirm: !flags.yes,
+      installHome: plan.installHome,
+      stateRoot: plan.stateRoot,
+      hosts: installed.map((h) => h.id),
+      targets: plan.targets,
+      skipped: plan.skipped,
+      text,
+      hint: flags.yes ? undefined : '确认无误后加 --yes 真的执行（--keep-state 保留授权/账本/任务板）',
+    });
+    return flags.yes ? 0 : 2;
+  }
+
+  const hosts = installed.map((h) => {
+    const r = uninstallHost(h.id);
+    return { id: h.id, ok: r.ok, changed: r.changed, path: r.path };
+  });
+  const removal = removeSelf({ ...opts, plan });
+  const out = {
+    ok: removal.ok && hosts.every((h) => h.ok !== false),
+    hosts,
+    removed: removal.removed,
+    deferred: removal.deferred,
+    failed: removal.failed,
+    log: removal.log,
+    note: removal.note,
+    text: describePlan(plan),
+  };
+  print(out);
+  return out.ok ? 0 : 1;
+}
+
+/** `nexi logs` —— 排障时先看这个，不用再让用户复制终端。 */
+function cmdLogs() {
+  const flags = parseFlags(rest);
+  if (flags.clear) {
+    print({ ok: true, ...clearLogs() });
+    return 0;
+  }
+  if (flags.dir || flags.path === true) {
+    print({ ok: true, dir: logsDir() });
+    return 0;
+  }
+  const tail = Number(flags.tail || 30);
+  const { dir, files, entries } = readTail({ lines: Number.isFinite(tail) ? tail : 30, day: typeof flags.day === 'string' ? flags.day : undefined });
+  if (flags.json) {
+    for (const e of entries) process.stdout.write(`${JSON.stringify(e)}\n`);
+    return 0;
+  }
+  const lines = [`目录：${dir}`, `文件：${files.slice(-3).join(', ') || '（还没有日志）'}`, ''];
+  for (const e of entries) lines.push(formatEntry(e));
+  if (!entries.length) lines.push('（还没有日志。跑一次 nexi doctor 就会写进来；NEXI_LOG=0 可关闭。）');
+  print(lines.join('\n'));
+  return 0;
 }
 
 async function cmdStatus() {
@@ -481,6 +599,19 @@ async function cmdSetup() {
 async function cmdUpdate() {
   const flags = parseFlags(rest);
   const home = typeof flags.home === 'string' ? flags.home : defaultHome();
+  // `--check` 只问一句"有没有新版"，不装、不写盘。
+  // 这是唯一会联网的入口，而且必须由用户显式敲出来。
+  if (flags.check) {
+    const current = currentMeta(home)?.version || await readVersion();
+    const r = await checkForUpdate({ current, force: true });
+    print({
+      ...r,
+      hint: r.outdated
+        ? `有新版本 ${r.latest}（当前 ${current}）：nexi update 或 npm i -g agentdeck-super`
+        : (r.ok ? '已是最新' : '没查到（离线/registry 不通都不影响使用）'),
+    });
+    return r.ok ? 0 : 1;
+  }
   const hosts = flags.noHosts ? 'none' : (flags._.length ? flags._ : undefined);
   const common = {
     home,
@@ -668,7 +799,9 @@ async function cmdConfig() {
     const rec = {
       id,
       label: host.label,
-      kind: host.kind,
+      // kind 要按**默认落点**解析：Continue 是 auto（yaml 或 json 都认），
+      // 直接抛 host.kind 会让调用方拿到 "auto" 这种没有信息量的值。
+      kind: kindFor(host, host.paths()[0]),
       ok: true,
       defaultPath: host.paths()[0],
       // 本机装没装，只影响"要不要顺手写进去"，不影响能不能生成
@@ -677,7 +810,10 @@ async function cmdConfig() {
     };
     // 显式要写文件才写（--out），否则只打印
     if (out) {
-      const file = ids.length > 1 ? out.replace(/\.json$|\.toml$/i, '') + `-${id}` + (host.kind === 'toml' ? '.toml' : '.json') : out;
+      const ext = rec.kind === 'toml' ? '.toml' : (rec.kind === 'yaml' ? '.yaml' : '.json');
+      const file = ids.length > 1
+        ? `${out.replace(/\.(json|toml|ya?ml)$/i, '')}-${id}${ext}`
+        : out;
       try {
         mkdirSync(dirname(file), { recursive: true });
         writeFileSync(file, r.preview, 'utf8');
@@ -1003,11 +1139,21 @@ function cmdWhere() {
  *   Agent 出新的速度比我们发版快。用户手上那个 Agent 只要吃 MCP，
  *   就能用一条命令把它描述进来，从此 install/where/doctor 全都认它。
  */
+/**
+ * 接入表里"配置形状"这一列。JSON 宿主的形状就是它挂的 key；
+ * YAML 宿主得区分开（`mcpServers` 在 JSON 里是对象、在 YAML 里是列表，不是一回事）。
+ */
+function hostShapeLabel(h) {
+  if (h.kind === 'toml') return 'toml';
+  if (h.kind === 'yaml') return `yaml/${String(h.shape || '').replace(/^yaml\./, '')}`;
+  if (h.kind === 'auto') return 'yaml / json';
+  return shapeKeyOf(h.id);
+}
+
 function cmdHost() {
   const sub = rest[0] || 'list';
   const flags = parseFlags(rest.slice(1));
-  if (sub === 'list') {
-    const custom = loadCustomHosts();
+  if (sub === 'list') {    const custom = loadCustomHosts();
     const rows = HOSTS.map((h) => {
       const ctx = undefined;
       const p = (h.paths(ctx) || [])[0] || '';
@@ -1016,7 +1162,7 @@ function cmdHost() {
         id: h.id,
         label: h.label,
         source: h.source || (BUILTIN_HOSTS.includes(h) ? 'builtin' : 'custom'),
-        shape: h.kind === 'toml' ? 'toml' : shapeKeyOf(h.id),
+        shape: hostShapeLabel(h),
         installed: Boolean(det && det.installed),
         path: p,
         docs: h.docs || '',
@@ -1028,9 +1174,19 @@ function cmdHost() {
     }
     if (flags.md) {
       // 生成 markdown 表格：文档里的清单从这里出，避免手抄一份然后慢慢和代码分叉。
+      // 路径缩成 `~`：这份表格会进公开文档，不该带上谁的家目录。
+      const home = platformCtx().home;
+      const appData = process.env.APPDATA || '';
+      const tilde = (p) => {
+        const s = String(p);
+        // Windows 上 %APPDATA%\… 比 ~\AppData\Roaming\… 更认得出来
+        if (appData && s.toLowerCase().startsWith(appData.toLowerCase())) return `%APPDATA%${s.slice(appData.length)}`;
+        if (home && s.startsWith(home)) return `~${s.slice(home.length)}`;
+        return s;
+      };
       const lines = ['| 宿主 | id | 配置形状 | 自定义 | 配置文件 | 官方文档 |', '| --- | --- | --- | --- | --- | --- |'];
       for (const r of rows) {
-        lines.push(`| ${r.label} | \`${r.id}\` | ${r.shape} | ${r.source === 'custom' ? '是' : ''} | \`${r.path}\` | ${r.docs || ''} |`);
+        lines.push(`| ${r.label} | \`${r.id}\` | ${r.shape} | ${r.source === 'custom' ? '是' : ''} | \`${tilde(r.path)}\` | ${r.docs || ''} |`);
       }
       print(lines.join('\n'));
       return 0;
@@ -1052,7 +1208,7 @@ function cmdHost() {
     const id = flags._[0];
     const paths = flags._.slice(1).filter((p) => typeof p === 'string' && p.trim());
     if (!id || !paths.length) {
-      print({ ok: false, hint: '用法：nexi host add <id> <配置文件路径…> [--label 名字] [--shape mcpServers|servers|context_servers|mcp.servers] [--kind json|toml] [--docs URL] [--cli 命令]' });
+      print({ ok: false, hint: `用法：nexi host add <id> <配置文件路径…> [--label 名字] [--shape ${shapeKeys().join('|')}] [--kind json|toml|yaml] [--docs URL] [--cli 命令]` });
       return 2;
     }
     const res = saveCustomHost({
@@ -1126,15 +1282,24 @@ function help() {
     --no-hosts                只装文件，不改宿主配置（测试/预演）
     --dry-run                 只算计划，不落盘
   nexi update [--bundle ...]  有 npm 就拉最新版；未上架用 --bundle
+    --check                   只问一句"有没有新版"（唯一会联网的入口，需显式调用）
   nexi rollback               切回上一版（宿主路径不变）
   nexi version                看当前固定目录版本和稳定启动器
+  nexi logs                   最近的运行日志（JSONL 落盘，按天轮转）
+    --tail <N>                看最后 N 条（默认 30）
+    --json                    原样输出 JSON 行（给 grep / jq）
+    --dir                     只打印日志目录
+    --clear                   清空日志
   nexi pair <host|guest|check|sync>  真机配对；状态在 <安装目录>/pair，升级不丢
   nexi where                  宿主配置在三个系统上分别落哪（一个包，不分系统）
   nexi host list|add|rm       接入表：任何吃 MCP 的 Agent 都能一条命令加进来（不用发版）
-  nexi snippet [--shape X]    生成可直接粘贴的配置片段（mcpServers/servers/context_servers/mcp.servers/toml）
+  nexi snippet [--shape X]    生成可直接粘贴的配置片段（mcpServers/servers/context_servers/mcp.servers/mcp.local/mcp.stdio/amp.mcpServers/yaml.extensions/yaml.mcpServers/toml）
   nexi install custom <文件> --shape X  装进任何未收录的 Agent
   nexi install <host>|--all   注册进宿主（--dry-run 只看差异）
   nexi uninstall <host>|--all 精确回滚
+  nexi uninstall --self       把自己卸干净（宿主条目 + 安装目录 + 状态目录）
+    --yes                     确认执行（不加只打印计划）
+    --keep-state              保留授权 / 账本 / 任务板 / 宿主注册表
   nexi verify-host <host>|--all  宿主认证：装→宿主自己确认→卸→配置逐字节还原（--record 写证据）
   nexi status                 一行状态
   nexi jobs                   看定时任务 / 待审批 / 最近执行
@@ -1172,6 +1337,7 @@ const table = {
   host: cmdHost,
   snippet: cmdSnippet,
   uninstall: cmdUninstall,
+  logs: cmdLogs,
   'verify-host': cmdVerifyHost,
   status: cmdStatus,
   jobs: cmdJobs,
@@ -1193,11 +1359,40 @@ const run = table[cmd] || (() => {
   return help();
 });
 
+/** 日志里的参数：把密钥类值抹掉，其余原样（太长会在 log.js 里再截断）。 */
+function sanitizeArgs(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = String(args[i]);
+    if (/^--(token|sha256|secret)$/.test(a)) { out.push(a, '[已隐去]'); i += 1; continue; }
+    out.push(a);
+  }
+  return out.slice(0, 8).join(' ');
+}
+
+const startedAt = Date.now();
 let code;
-if (helpAsked && cmd !== 'help' && cmd !== '--help' && cmd !== '-h' && table[cmd]) {
-  log(`nexi ${cmd}：带 --help，只显示帮助，没有执行任何动作。`);
-  code = help();
-} else {
-  code = await run();
+try {
+  if (helpAsked && cmd !== 'help' && cmd !== '--help' && cmd !== '-h' && table[cmd]) {
+    log(`nexi ${cmd}：带 --help，只显示帮助，没有执行任何动作。`);
+    code = help();
+  } else {
+    code = await run();
+  }
+} catch (err) {
+  // 崩了也要留一条：这是"用户说它坏了"时唯一能复盘的东西
+  logEvent('error', 'cli', { cmd, args: sanitizeArgs(rest), error: String(err?.stack || err), version: readVersion() });
+  throw err;
 }
 if (typeof code === 'number') process.exitCode = code;
+// `--help` 不记日志：帮助是只读的（本文件的注释里已经把这条写死了），
+// 而写日志要创建状态目录 —— 那会让"看一眼怎么用"在 home 里留下东西。
+if (!helpAsked) {
+  logEvent(code === 0 || code === undefined ? 'info' : 'warn', 'cli', {
+    cmd,
+    args: sanitizeArgs(rest),
+    code: typeof code === 'number' ? code : 0,
+    ms: Date.now() - startedAt,
+    version: readVersion(),
+  });
+}

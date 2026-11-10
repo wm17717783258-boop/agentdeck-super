@@ -38,19 +38,27 @@ function run(args, env = {}) {
 }
 
 test('内置表覆盖 25 个宿主，且没有重复 id', () => {
-  assert.ok(BUILTIN_HOSTS.length >= 25, `内置宿主只有 ${BUILTIN_HOSTS.length} 个`);
+  assert.ok(BUILTIN_HOSTS.length >= 26, `内置宿主只有 ${BUILTIN_HOSTS.length} 个`);
   const ids = HOSTS.map((h) => h.id);
   assert.equal(new Set(ids).size, ids.length, 'HOSTS 里有重复 id');
   for (const h of HOSTS) {
     assert.ok(h.label, `${h.id} 没有 label`);
-    assert.ok(['json', 'toml'].includes(h.kind), `${h.id} 的 kind 不对：${h.kind}`);
+    // auto = 同一个宿主两代格式并存（Continue 的 config.yaml / config.json），
+    // 按目标文件扩展名决定写入器，不算"没写 kind"。
+    assert.ok(['json', 'toml', 'yaml', 'auto'].includes(h.kind), `${h.id} 的 kind 不对：${h.kind}`);
   }
 });
 
-test('七种 JSON 形状 + TOML 都能生成结构正确的片段', () => {
+test('八种 JSON 形状 + 两种 YAML 形状 + TOML 都能生成结构正确的片段', () => {
   for (const shape of shapeKeys()) {
     const text = buildSnippet({ shape });
     assert.ok(text, `${shape} 生成失败`);
+    if (shape.startsWith('yaml.')) {
+      // YAML 片段不 JSON.parse，交给专门的 yaml-hosts 测试按结构核对
+      assert.ok(text.includes('nexi'), `${shape} 片段里没有 nexi`);
+      assert.ok(text.includes('command') || text.includes('cmd:'), `${shape} 片段里没有命令字段`);
+      continue;
+    }
     const data = JSON.parse(text);
     assert.equal(typeof data, 'object');
     const servers = shape === 'mcp.servers'

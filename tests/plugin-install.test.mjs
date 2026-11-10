@@ -286,6 +286,19 @@ test('nexi config：所有宿主都能离线生成配置（本机装没装都不
     // 它们被判成 toml，测试红了。形状表才是契约。
     if (item.kind === 'toml') {
       assert.match(item.config, /\[mcp_servers\.nexi\]/, 'codex 该是 TOML 段');
+    } else if (item.kind === 'yaml') {
+      // YAML 宿主（Goose / Continue 新版）：结构由 tests/yaml-hosts.test.mjs 用独立解析器核，
+      // 这里只钉住"生成的是 YAML、且带自己的命令字段"，不重复造解析器。
+      assert.ok(!item.config.trim().startsWith('{'), `${item.id} 该给 YAML，不该给 JSON`);
+      assert.match(item.config, /nexi/, `${item.id} 的 YAML 里没有 nexi 项`);
+      if (item.id === 'goose') {
+        assert.match(item.config, /^ {2}nexi:$/m, 'Goose 的 extensions 下是 map 成员');
+        assert.match(item.config, /cmd:/, 'Goose 用 cmd 不是 command');
+        assert.match(item.config, /envs:/, 'Goose 用 envs 不是 env');
+      } else {
+        assert.match(item.config, /^ +- name: "nexi"$/m, 'Continue 的 mcpServers 是列表项');
+        assert.match(item.config, /command:/, 'Continue 用 command');
+      }
     } else {
       const doc = JSON.parse(item.config);
       const key = shapeKeyOf(item.id);
