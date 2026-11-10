@@ -197,6 +197,13 @@ async function cmdDoctor() {
   const live = hosts.filter((h) => h.installed);
   const wired = live.filter((h) => h.registered);
 
+  // 宿主实际会跑哪一份代码：插件走 git、固定目录走 npm，两条分发路径会脱节。
+  // 用户在 npm 上跑 `@latest doctor` 看到新版本，宿主里跑的却还是上次 --all 装的那份 ——
+  // 表现是"升级了但行为没变"，最容易被当成网络问题查到半夜。
+  const instMeta = currentMeta();
+  const hostVer = String((instMeta && instMeta.version) || '');
+  const hostStale = Boolean(hostVer && hostVer !== version);
+
   if (flags.json) {
     const checks = [];
     checks.push({ name: 'node', ok: nodeOk, detail: process.versions.node });
@@ -209,7 +216,14 @@ async function cmdDoctor() {
       hosts: hosts.map((h) => ({ id: h.id, label: h.label, installed: h.installed, registered: h.registered, path: h.path })),
     });
     const launch = launchCommand();
-    checks.push({ name: 'launch', ok: true, detail: `${launch.command} ${launch.args.join(' ')}` });
+    checks.push({
+      name: 'launch',
+      ok: true,
+      detail: `${launch.command} ${launch.args.join(' ')}`,
+      // 新增字段，老消费者忽略即可
+      hostVersion: hostVer || 'npx',
+      hostStale,
+    });
     print({ ok: checks.every((c) => c.ok), checks });
     return checks.every((c) => c.ok) ? 0 : 1;
   }
@@ -235,6 +249,14 @@ async function cmdDoctor() {
       );
     }
     for (const h of hosts.filter((x) => !x.installed)) lines.push(`  ·  ${h.label}  没装，跳过`);
+    if (!hostVer) {
+      lines.push('  ·  没有固定目录：宿主每次从 npm 现取（首次会多等几秒）');
+    } else if (hostStale) {
+      lines.push(`  ❌ 宿主跑的是 ${hostVer}，而这条命令是 ${version}`);
+      lines.push('     → 跑一次 npx -y agentdeck-super@latest --all，宿主才会换成新那份');
+    } else {
+      lines.push(`  ✅ 宿主跑的是 ${hostVer}（固定目录，和这条命令同一份）`);
+    }
   }
   if (!flags.quick) {
     lines.push('');

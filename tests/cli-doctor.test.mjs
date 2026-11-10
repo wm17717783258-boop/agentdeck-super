@@ -59,8 +59,22 @@ test('默认输出是人话：三段 + 结论 + 可直接复制的报告', () =>
   }
 });
 
-test('--json 仍可解析，且 checks 名字是老契约', () => {
-  const r = run(['--json']);
+/**
+ * 回归：用户 `npx @latest doctor` 看到 1.11.15，宿主里跑的却是上次 `--all` 装的 1.11.12。
+ * 这是"升级了但行为没变"的根源 —— 旧版没有这行，用户只能怀疑网络。
+ */
+test('体检要交代"宿主跑的是哪一份代码"', () => {
+  const r = run(['--quick']);
+  const out = String(r.stdout || '');
+  try {
+    assert.match(out, /宿主跑的是 |没有固定目录/, '② 段没交代宿主实际跑哪份代码，版本脱节时看不出来');
+  } finally {
+    rmSync(r.cwd, { recursive: true, force: true });
+    rmSync(r.home, { recursive: true, force: true });
+  }
+});
+
+test('--json 仍可解析，且 checks 名字是老契约', () => {  const r = run(['--json']);
   const out = String(r.stdout || '');
   try {
     const j = JSON.parse(out);

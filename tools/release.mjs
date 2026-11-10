@@ -151,14 +151,16 @@ function registryState() {
 
   let versions = [];
   let latest = null;
+  let next = null;
   if (r.ok) {
     try {
       const doc = JSON.parse(String(r.rawStdout || '{}'));
       versions = Object.keys(doc.versions || {});
       latest = (doc['dist-tags'] || {}).latest || null;
+      next = (doc['dist-tags'] || {}).next || null;
     } catch { /* 解析失败按查不到处理 */ }
   }
-  return { versions, latest, reachable: r.ok };
+  return { versions, latest, next, reachable: r.ok };
 }
 
 /** 某阶段失败 → 打印原因与「你现在该做什么」，然后退出。 */
@@ -536,7 +538,15 @@ say('═'.repeat(64));
 
 if (PUBLISH) {
   head(6, '发布', 'npm publish —— 发完还要去 registry 查一遍，退出码 0 不等于发成了');
-  const pub = run('npm', ['publish', tgzPath, '--access', 'public', ...(otpArg ? [otpArg] : [])], { timeout: 300_000 });
+  // 2026-11-10 定的规矩：npm 不是测试渠道。
+  // 没做过"真机 + 第二台设备"验收的版本，只许进 next，不许顶到 latest ——
+  // 因为用户 npx 时打的就是 latest，那一份会被当成成熟产品用。
+  // 验收通过后要顶 latest：node tools/release.mjs --publish --latest
+  const tag = argv.includes('--latest') ? 'latest' : 'next';
+  if (tag === 'next') {
+    say(`  ·  这一版只打 next（npm 上 latest 不动）—— 验收通过后加 --latest 再发一次才顶上去`);
+  }
+  const pub = run('npm', ['publish', tgzPath, '--access', 'public', '--tag', tag, ...(otpArg ? [otpArg] : [])], { timeout: 300_000 });
   // npm 现在的发布是**异步**的：PUT 之后先回一句 "being processed"，版本要过 1–3 分钟
   // 才出现在 registry 文档里；这期间再发同一版本会收到 409 "previously staged version"。
   // 所以：① 报错也先查 registry；② 409/"processing" 不算失败，进长等待。
@@ -602,11 +612,19 @@ if (PUBLISH) {
   }
   say(`  ✅ registry 已可查：${pkg.name}@${VERSION}`);
 
-  if (state.latest !== VERSION) {
-    say(`  ⚠️  dist-tags.latest 现在指向 ${state.latest || '(空)'}，不是 ${VERSION} —— 用户 npx 会装到别的版本。`);
-    say(`     修正：npm dist-tag add ${pkg.name}@${VERSION} latest`);
+  const after = registryState();
+  if (tag === 'latest') {
+    if (after.latest !== VERSION) {
+      say(`  ⚠️  dist-tags.latest 现在指向 ${after.latest || '(空)'}，不是 ${VERSION} —— 用户 npx 会装到别的版本。`);
+      say(`     修正：npm dist-tag add ${pkg.name}@${VERSION} latest`);
+    } else {
+      say(`  ✅ dist-tags.latest 已指向 ${VERSION}（用户 npx 装到的就是这一份）`);
+    }
   } else {
-    say(`  ✅ dist-tags.latest 已指向 ${VERSION}（用户 npx 装到的就是这一份）`);
+    const nextVer = after.next || '(查不到，可能还在同步)';
+    say(`  ·  dist-tags：latest=${after.latest || '(空)'}（没动）　next=${nextVer}`);
+    say(`     要试这一版：npx -y ${pkg.name}@next <命令>`);
+    say(`     验收通过后再顶：npm dist-tag add ${pkg.name}@${VERSION} latest`);
   }
 
   // 发完最该做的事：从 registry 真装一次。这是唯一能证明"用户能装上"的动作。
