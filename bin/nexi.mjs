@@ -18,12 +18,16 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createHub } from '../lib/hub.js';
 import { serveStdio } from '../lib/mcp/server.js';
-import { HOSTS, detectHosts, installHost, uninstallHost, installAll, launchCommand } from '../lib/connect/hosts.js';
+import {
+  HOSTS, BUILTIN_HOSTS, HOST_REGISTRY_PROBLEMS, detectHosts, installHost, uninstallHost, installAll, launchCommand,
+  buildSnippet, adHocHost, shapeKeys, shapeKeyOf,
+} from '../lib/connect/hosts.js';
+import { hostsDir, saveCustomHost, removeCustomHost, loadCustomHosts } from '../lib/connect/registry.js';
 import { platformCtx } from '../lib/connect/platform.js';
 import { verifyHost, recordHostsEvidence, summarize } from '../lib/connect/verify.js';
 import { readVersion } from '../lib/version.js';
@@ -67,6 +71,13 @@ const VALUE_FLAGS = {
   source: 'source',
   registry: 'registry',
   'launch-home': 'launchHome',
+  label: 'label',
+  path: 'path',
+  shape: 'shape',
+  kind: 'kind',
+  docs: 'docs',
+  cli: 'cli',
+  name: 'name',
 };
 
 function parseFlags(args) {
@@ -78,6 +89,8 @@ function parseFlags(args) {
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--force') flags.force = true;
     else if (a === '--json') flags.json = true;
+    else if (a === '--md') flags.md = true;
+    else if (a === '--toml') flags.toml = true;
     else if (a === '--record') flags.record = true;
     else if (a === '--portable') flags.portable = true;
     else if (a === '--public') flags.public = true;
@@ -249,7 +262,17 @@ async function cmdDoctor() {
           : `  ❌ ${h.label}  宿主装了但没接上 → 跑 nexi install --all`,
       );
     }
-    for (const h of hosts.filter((x) => !x.installed)) lines.push(`  ·  ${h.label}  没装，跳过`);
+    // 没装的宿主**折成一行**：接入表有 25 个，一家一行会把结论顶出屏幕 ——
+    // 用户要的是"我这台能不能用"，不是"世界上还有多少家没装"。
+    const absent = hosts.filter((x) => !x.installed);
+    if (absent.length) {
+      lines.push(`  ·  没装 ${absent.length} 个：${absent.map((h) => h.label).join('、')}`);
+    }
+    const customCount = HOSTS.filter((h) => h.source === 'custom').length;
+    lines.push(`  ·  接入表 ${HOSTS.length} 个（内置 ${BUILTIN_HOSTS.length} + 自定义 ${customCount}${customCount ? '' : '，用 nexi host add 可加任意 Agent'}）`);
+    for (const p of HOST_REGISTRY_PROBLEMS) {
+      lines.push(`  ❌ 注册表 ${p.file} 没读进去：${p.error}`);
+    }
     if (!hostVer) {
       lines.push('  ·  没有固定目录：宿主每次从 npm 现取（首次会多等几秒）');
     } else if (hostStale) {
@@ -285,7 +308,8 @@ async function cmdDoctor() {
   lines.push('┌────────────────────────────────');
   lines.push(`│ 机器 ${process.platform}/${process.arch} · node ${process.versions.node}`);
   lines.push(`│ 版本 ${version}`);
-  lines.push(`│ 宿主 ${hosts.map((h) => `${h.id}=${h.installed ? (h.registered ? 'ok' : '未接') : '没装'}`).join(' ')}`);
+  // 诊断块是给人复制粘贴的：25 家全铺开一行太长，只列已装的 + 总数。
+  lines.push(`│ 宿主 ${wired.length}/${hosts.length} 已接 · ${live.length ? live.map((h) => `${h.id}=${h.registered ? 'ok' : '未接'}`).join(' ') : '一台都没装'}`);
   if (fn.length) lines.push(`│ 功能 ${fn.map((f) => `${f.key}=${f.ok ? 'ok' : '失败'}`).join(' ')}`);
   else lines.push('│ 功能 （--quick 跳过）');
   lines.push(`│ 结论 ${bad.length ? 'FAIL' : 'PASS'}`);
@@ -370,6 +394,22 @@ async function cmdInstall() {
       return 1;
     }
   }
+  // nexi install custom <文件> --shape servers
+  // 未收录的 Agent 走这条：不写注册表、不等发版，直接按形状写进它自己的配置。
+  if (target === 'custom') {
+    const file = explicit || flags.path || '';
+    if (!file) {
+      print({ ok: false, hint: '用法：nexi install custom <配置文件路径> --shape mcpServers|servers|context_servers|mcp.servers [--kind json|toml]' });
+      return 2;
+    }
+    const shape = flags.shape || 'mcpServers';
+    if (!shapeKeys().includes(shape)) return print({ ok: false, hint: `shape 可选：${shapeKeys().join(' / ')}` }), 2;
+    const host = adHocHost({ id: 'custom', label: '自定义 Agent', shape, kind: flags.kind === 'toml' ? 'toml' : 'json', path: resolve(file) });
+    const res = installHost('custom', { ...opts, host, path: resolve(file) });
+    print(res);
+    return res.ok ? 0 : 1;
+  }
+
   const res = installHost(target, { ...opts, path: targetPath });
   print(res);
   return res.ok ? 0 : 1;
@@ -956,6 +996,116 @@ function cmdWhere() {
   return 0;
 }
 
+/**
+ * `nexi host` —— 接入表的增删看。
+ *
+ * 为什么这是产品能力而不是开发者工具：
+ *   Agent 出新的速度比我们发版快。用户手上那个 Agent 只要吃 MCP，
+ *   就能用一条命令把它描述进来，从此 install/where/doctor 全都认它。
+ */
+function cmdHost() {
+  const sub = rest[0] || 'list';
+  const flags = parseFlags(rest.slice(1));
+  if (sub === 'list') {
+    const custom = loadCustomHosts();
+    const rows = HOSTS.map((h) => {
+      const ctx = undefined;
+      const p = (h.paths(ctx) || [])[0] || '';
+      const det = detectHosts().find((d) => d.id === h.id);
+      return {
+        id: h.id,
+        label: h.label,
+        source: h.source || (BUILTIN_HOSTS.includes(h) ? 'builtin' : 'custom'),
+        shape: h.kind === 'toml' ? 'toml' : shapeKeyOf(h.id),
+        installed: Boolean(det && det.installed),
+        path: p,
+        docs: h.docs || '',
+      };
+    });
+    if (flags.json) {
+      print({ dir: custom.dir, problems: [...HOST_REGISTRY_PROBLEMS, ...custom.problems], hosts: rows });
+      return 0;
+    }
+    if (flags.md) {
+      // 生成 markdown 表格：文档里的清单从这里出，避免手抄一份然后慢慢和代码分叉。
+      const lines = ['| 宿主 | id | 配置形状 | 自定义 | 配置文件 | 官方文档 |', '| --- | --- | --- | --- | --- | --- |'];
+      for (const r of rows) {
+        lines.push(`| ${r.label} | \`${r.id}\` | ${r.shape} | ${r.source === 'custom' ? '是' : ''} | \`${r.path}\` | ${r.docs || ''} |`);
+      }
+      print(lines.join('\n'));
+      return 0;
+    }
+    const lines = [`接入表：${rows.length} 个（内置 ${BUILTIN_HOSTS.length} + 自定义 ${rows.length - BUILTIN_HOSTS.length}）`,
+      `自定义目录：${custom.dir}（丢一份 JSON 进去就生效，不用发版）`, ''];
+    for (const r of rows) {
+      lines.push(`  ${r.installed ? '✓' : '·'} ${r.id.padEnd(16)} ${String(r.shape).padEnd(16)} ${r.source === 'custom' ? '[自定义] ' : ''}${r.path}`);
+    }
+    const problems = [...HOST_REGISTRY_PROBLEMS, ...custom.problems];
+    if (problems.length) {
+      lines.push('', '注册表里有文件没用上（不影响别的宿主）：');
+      for (const p of problems) lines.push(`  · ${p.file}${p.id ? `（${p.id}）` : ''}：${p.error}`);
+    }
+    print(lines.join('\n'));
+    return 0;
+  }
+  if (sub === 'add') {
+    const id = flags._[0];
+    const paths = flags._.slice(1).filter((p) => typeof p === 'string' && p.trim());
+    if (!id || !paths.length) {
+      print({ ok: false, hint: '用法：nexi host add <id> <配置文件路径…> [--label 名字] [--shape mcpServers|servers|context_servers|mcp.servers] [--kind json|toml] [--docs URL] [--cli 命令]' });
+      return 2;
+    }
+    const res = saveCustomHost({
+      id,
+      label: flags.label || id,
+      kind: flags.kind,
+      shape: flags.shape || 'mcpServers',
+      paths,
+      docs: flags.docs || '',
+      cli: flags.cli || '',
+    });
+    print(res.ok ? { ok: true, ...res, hint: `已记入接入表；跑 nexi install ${id} 就能写进它的配置` } : res);
+    return res.ok ? 0 : 1;
+  }
+  if (sub === 'rm' || sub === 'remove') {
+    const id = flags._[0];
+    if (!id) return print({ ok: false, hint: '用法：nexi host rm <id>' }), 2;
+    const res = removeCustomHost(id);
+    print(res);
+    return res.ok ? 0 : 1;
+  }
+  print({ ok: false, hint: `不认识的子命令：${sub}（可用 list / add / rm）` });
+  return 2;
+}
+
+/**
+ * `nexi snippet` —— 给「只能手动粘贴配置」的 Agent 一段现成 JSON/TOML。
+ * 这是接入的最后一条兜底通道：只要对方支持 MCP，就一定能接上。
+ */
+function cmdSnippet() {
+  const flags = parseFlags(rest);
+  const shape = flags.shape || 'mcpServers';
+  const toml = flags.toml === true || shape === 'toml' || flags.kind === 'toml';
+  if (!toml && !shapeKeys().includes(shape)) {
+    log(`shape 可选：${shapeKeys().join(' / ')} / toml`);
+    return 2;
+  }
+  const text = buildSnippet({
+    shape,
+    toml,
+    name: flags.name || 'nexi',
+    launch: launchCommand({ portable: flags.portable === true }),
+  });
+  if (!text) return print({ ok: false, hint: '生成失败：shape 不认识' }), 2;
+  if (flags.out) {
+    writeFileSync(flags.out, text, 'utf8');
+    print({ ok: true, out: flags.out, bytes: Buffer.byteLength(text) });
+    return 0;
+  }
+  process.stdout.write(text);
+  return 0;
+}
+
 function help() {
   print(`nexi —— Nexi 灵犀本地 Hub
 
@@ -980,6 +1130,9 @@ function help() {
   nexi version                看当前固定目录版本和稳定启动器
   nexi pair <host|guest|check|sync>  真机配对；状态在 <安装目录>/pair，升级不丢
   nexi where                  宿主配置在三个系统上分别落哪（一个包，不分系统）
+  nexi host list|add|rm       接入表：任何吃 MCP 的 Agent 都能一条命令加进来（不用发版）
+  nexi snippet [--shape X]    生成可直接粘贴的配置片段（mcpServers/servers/context_servers/mcp.servers/toml）
+  nexi install custom <文件> --shape X  装进任何未收录的 Agent
   nexi install <host>|--all   注册进宿主（--dry-run 只看差异）
   nexi uninstall <host>|--all 精确回滚
   nexi verify-host <host>|--all  宿主认证：装→宿主自己确认→卸→配置逐字节还原（--record 写证据）
@@ -1016,6 +1169,8 @@ const table = {
   pair: cmdPair,
   install: cmdInstall,
   where: cmdWhere,
+  host: cmdHost,
+  snippet: cmdSnippet,
   uninstall: cmdUninstall,
   'verify-host': cmdVerifyHost,
   status: cmdStatus,

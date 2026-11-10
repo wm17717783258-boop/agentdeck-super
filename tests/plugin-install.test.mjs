@@ -292,6 +292,14 @@ test('nexi config：所有宿主都能离线生成配置（本机装没装都不
       if (key === 'mcp.servers') {
         assert.equal(doc.mcp?.servers?.nexi?.type, 'local', `${item.id} 该写 mcp.servers + type:local`);
         assert.ok(Array.isArray(doc.mcp.servers.nexi.command), `${item.id} 命令该是数组`);
+      } else if (key === 'mcp') {
+        // Kilo CLI / Crush：mcp.<name>，没有 servers 这一级（形状名不同，配置 key 都是 mcp）。
+        assert.ok(doc.mcp?.nexi, `${item.id} 该写 mcp.<name>`);
+        const argv = Array.isArray(doc.mcp.nexi.command) ? doc.mcp.nexi.command : doc.mcp.nexi.args;
+        assert.ok(Array.isArray(argv) && argv.length, `${item.id} 命令该是数组`);
+        assert.ok(['local', 'stdio'].includes(doc.mcp.nexi.type), `${item.id} type 不对：${doc.mcp.nexi.type}`);
+      } else if (key === 'amp.mcpServers') {
+        assert.ok(doc['amp.mcpServers']?.nexi?.command, `${item.id} 该写 amp.mcpServers`);
       } else if (key === 'servers') {
         assert.equal(doc.servers?.nexi?.type, 'stdio', `${item.id} 该写 servers + type:stdio`);
       } else if (key === 'context_servers') {
