@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { createHub } from '../lib/hub.js';
 import { serveStdio } from '../lib/mcp/server.js';
 import { HOSTS, detectHosts, installHost, uninstallHost, installAll, launchCommand } from '../lib/connect/hosts.js';
+import { platformCtx } from '../lib/connect/platform.js';
 import { verifyHost, recordHostsEvidence, summarize } from '../lib/connect/verify.js';
 import { readVersion } from '../lib/version.js';
 import {
@@ -908,6 +909,53 @@ async function cmdVerifyHost() {
   return summary.failed > 0 ? 1 : 0;
 }
 
+/**
+ * `nexi where` —— 宿主配置到底落在哪。
+ *
+ * 为什么要有这条命令：
+ *   用户问「插件凭什么分电脑系统」。答案是：不分。产物只有一个包，
+ *   三系统跑同一份代码；真正不一样的是**宿主自己把配置放在哪**。
+ *   这条命令把那三张表一次打印出来，当前系统那列标 ←，不用靠嘴解释。
+ */
+function cmdWhere() {
+  const flags = parseFlags(rest);
+  const here = process.platform;
+  // 非本机系统用占位家目录算（真机的 home 套到 macOS 上会拼出
+  // `C://Users//x/Library/...` 这种四不像），展示时再缩成 ~。
+  const HOME = { win32: 'C:////Users////you', darwin: '/Users/you', linux: '/home/you' };
+  const ctx = {};
+  for (const p of ['win32', 'darwin', 'linux']) {
+    ctx[p] = p === here ? platformCtx() : platformCtx({ platform: p, home: HOME[p], env: {} });
+  }
+  const ctxHome = Object.fromEntries(['win32', 'darwin', 'linux'].map((p) => [p, ctx[p].home]));
+  const tildify = (p, home) => {
+    const sep = p === 'win32' ? '\\' : '/';
+    return p.startsWith(home + sep) ? `~${sep}${p.slice(home.length + 1)}` : p;
+  };
+  const rows = HOSTS.map((h) => {
+    const cell = (p) => tildify(h.paths(ctx[p])[0], ctxHome[p]);
+    return { id: h.id, label: h.label, win32: cell('win32'), darwin: cell('darwin'), linux: cell('linux') };
+  });
+  if (flags.json) {
+    print({ platform: here, package: 'agentdeck-super', sameArtifact: true, hosts: rows });
+    return 0;
+  }
+  const lines = [];
+  lines.push(`一个包，三个系统：agentdeck-super 用同一份代码跑，hosts 表只差「宿主把配置放哪」。`);
+  lines.push(`本机：${here}（下面标 ← 的那列就是本机实际会写的路径）`);
+  lines.push('');
+  for (const r of rows) {
+    lines.push(`${r.label}（${r.id}）`);
+    for (const p of ['win32', 'darwin', 'linux']) {
+      lines.push(`  ${p === here ? '←' : ' '} ${p.padEnd(6)} ${r[p]}`);
+    }
+  }
+  lines.push('');
+  lines.push('同一份安装包：npm i -g agentdeck-super / npx -y agentdeck-super@latest 在任何系统上都是同一条命令。');
+  print(lines.join('\n'));
+  return 0;
+}
+
 function help() {
   print(`nexi —— Nexi 灵犀本地 Hub
 
@@ -931,6 +979,7 @@ function help() {
   nexi rollback               切回上一版（宿主路径不变）
   nexi version                看当前固定目录版本和稳定启动器
   nexi pair <host|guest|check|sync>  真机配对；状态在 <安装目录>/pair，升级不丢
+  nexi where                  宿主配置在三个系统上分别落哪（一个包，不分系统）
   nexi install <host>|--all   注册进宿主（--dry-run 只看差异）
   nexi uninstall <host>|--all 精确回滚
   nexi verify-host <host>|--all  宿主认证：装→宿主自己确认→卸→配置逐字节还原（--record 写证据）
@@ -966,6 +1015,7 @@ const table = {
   version: cmdVersion,
   pair: cmdPair,
   install: cmdInstall,
+  where: cmdWhere,
   uninstall: cmdUninstall,
   'verify-host': cmdVerifyHost,
   status: cmdStatus,
