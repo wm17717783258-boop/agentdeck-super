@@ -25,7 +25,7 @@ import { createHub } from '../lib/hub.js';
 import { serveStdio } from '../lib/mcp/server.js';
 import {
   HOSTS, BUILTIN_HOSTS, HOST_REGISTRY_PROBLEMS, detectHosts, installHost, uninstallHost, installAll, launchCommand,
-  buildSnippet, adHocHost, shapeKeys, shapeKeyOf, kindFor, restoreHost,
+  buildSnippet, adHocHost, shapeKeys, shapeKeyOf, kindFor, restoreHost, repairHost,
 } from '../lib/connect/hosts.js';
 import { listBackups, backupSummary, DEFAULT_KEEP } from '../lib/connect/backup.js';
 import { lockState } from '../lib/connect/lock.js';
@@ -510,6 +510,26 @@ async function cmdUninstall() {
   // 于是"卸载成功了"其实卸的是宿主默认路径、你指的那个文件一个字没动。
   const explicit = typeof flags._[1] === 'string' && flags._[1].trim() ? flags._[1].trim() : '';
   const targetPath = explicit || process.env.NEXI_HOST_CONFIG || undefined;
+
+  // `uninstall custom <文件> --shape X`：与 `install custom` 对称。
+  // 不给 shape 时按 mcpServers 处理 —— 这是最常见的形状，也是 install custom 的默认值。
+  if (target === 'custom') {
+    if (!explicit) {
+      print({ ok: false, hint: `用法：nexi uninstall custom <配置文件路径> [--shape ${shapeKeys().join('|')}] [--kind json|toml|yaml] [--name nexi]` });
+      return 2;
+    }
+    const shape = typeof flags.shape === 'string' ? flags.shape : 'mcpServers';
+    const kind = typeof flags.kind === 'string' ? flags.kind : 'json';
+    if (!shapeKeys().includes(shape)) {
+      print({ ok: false, hint: `shape 不认识：${shape}`, shapes: shapeKeys() });
+      return 2;
+    }
+    const host = adHocHost({ id: 'custom', label: '自定义 Agent', shape, kind, path: resolve(explicit) });
+    const res = uninstallHost('custom', { dryRun: flags.dryRun, path: resolve(explicit), host, name: flags.name });
+    print(res);
+    return res.ok ? 0 : 1;
+  }
+
   const res = uninstallHost(target, { dryRun: flags.dryRun, path: targetPath });
   print(res);
   return res.ok ? 0 : 1;
@@ -649,6 +669,13 @@ function cmdLogs() {
   const tail = Number(flags.tail || 30);
   const { dir, files, entries } = readTail({ lines: Number.isFinite(tail) ? tail : 30, day: typeof flags.day === 'string' ? flags.day : undefined });
   if (flags.json) {
+    // NDJSON：一行一条，jq -c 直接吃。没有日志时也要吐一行 ——
+    // 空输出会让 `nexi logs --json | jq` 在脚本里表现成"管道没数据"，
+    // 分不清是没日志还是命令坏了。
+    if (!entries.length) {
+      process.stdout.write(`${JSON.stringify({ ok: true, entries: 0, dir, files, note: '还没有日志；跑一次 nexi doctor 就会写进来' })}\n`);
+      return 0;
+    }
     for (const e of entries) process.stdout.write(`${JSON.stringify(e)}\n`);
     return 0;
   }
@@ -819,8 +846,12 @@ async function automationCall(args) {
   try {
     const blocks = await hub.call('deck_automation', args);
     const text = blocks.map((b) => (b.type === 'text' ? b.text : JSON.stringify(b))).join('\n');
-    print(text);
-    return /❌|失败|写盘失败|不认识|没有这个/.test(text) ? 1 : 0;
+    const ok = !/❌|失败|写盘失败|不认识|没有这个/.test(text);
+    // --json 的契约是"输出能被 jq 解析"。以前这里无视这个开关，直接打人话，
+    // 于是 `nexi jobs --json | jq` 会炸 —— 脚本化场景等于没有这个开关。
+    if (rest.includes('--json')) print({ ok, action: args.action || 'list', output: text });
+    else print(text);
+    return ok ? 0 : 1;
   } finally {
     await hub.close();
   }
@@ -885,6 +916,8 @@ async function cmdConfig() {
   }
 
   const results = [];
+  // 探测一次就够：以前写在循环里，30 个宿主 × 一次全盘探测 = 用户等 1.8 秒。
+  const detected = detectHosts();
   for (const id of ids) {
     const host = HOSTS.find((h) => h.id === id);
     if (!host) {
@@ -896,7 +929,30 @@ async function cmdConfig() {
     // 而不是配置文本；但 nexi config 的语义是"给我这份配置长什么样"，
     // 跟本机有没有装 CLI 无关，所以要显式要走文件那条渲染路径。
     const r = installHost(id, { dryRun: true, force: true, via: 'file' });
+    const kind = kindFor(host, host.paths()[0]);
     if (!r.ok) {
+      // 「生成配置」和「能不能写进这台机器的那个文件」是两件事。
+      // 目标文件里有半截哨兵时，install 会拒绝写（对），但 config 仍然该给出
+      // 正确的配置文本 —— 否则用户会以为这个宿主适配不了。给出片段 + needsRepair。
+      const shapeName = host.shape || (kind === 'yaml' ? 'yaml.mcpServers' : 'mcpServers');
+      const snippet = buildSnippet({ shape: shapeName, launch: launchCommand({}), toml: kind === 'toml' });
+      if (snippet) {
+        results.push({
+          id,
+          label: host.label,
+          kind,
+          ok: true,
+          defaultPath: host.paths()[0],
+          installedLocally: detected.find((h) => h.id === id)?.installed === true,
+          config: snippet,
+          needsRepair: true,
+          warnings: [
+            ...(r.warnings || []),
+            `这段配置本身是对的；但目标文件里有历史残留，install 会拒绝写入 —— 先跑 nexi repair ${id}。`,
+          ],
+        });
+        continue;
+      }
       results.push({ id, label: host.label, ok: false, reason: r.reason || '生成失败', warnings: r.warnings });
       continue;
     }
@@ -909,7 +965,7 @@ async function cmdConfig() {
       ok: true,
       defaultPath: host.paths()[0],
       // 本机装没装，只影响"要不要顺手写进去"，不影响能不能生成
-      installedLocally: detectHosts().find((h) => h.id === id)?.installed === true,
+      installedLocally: detected.find((h) => h.id === id)?.installed === true,
       config: r.preview,
     };
     // 显式要写文件才写（--out），否则只打印
@@ -930,6 +986,52 @@ async function cmdConfig() {
   }
   print(wantAll ? results : results[0]);
   return results.every((r) => r.ok) ? 0 : 1;
+}
+
+/**
+ * nexi repair [host|--all] —— 把 nexi 自己留在配置文件里的残渣清干净。
+ *
+ * 为什么必须有这条：`install` 碰到半截哨兵会**拒绝写入**（否则文件越写越乱），
+ * 但只拒绝不收拾，用户就卡死在那儿 —— 让他自己去 TOML 里数哪几行该删，是刁难。
+ * 这条命令只删 nexi 自己的东西（哨兵注释 + [mcp_servers.nexi] 表），
+ * 动手前照例备份，删完就能重新 install。
+ */
+async function cmdRepair() {
+  const flags = parseFlags(rest);
+  // parseFlags 把 --dry-run 归一成 flags.dryRun；写成 flags['dry-run'] 会永远是 undefined，
+  // 于是「干跑」变成真写 —— 这一条踩过一次，现在由 tests/fault-recovery 钉住。
+  const dryRun = flags.dryRun === true;
+  const wantAll = flags.all === true;
+  const ids = wantAll ? HOSTS.map((h) => h.id) : [flags._[0]].filter(Boolean);
+  if (!ids.length) {
+    print({
+      ok: false,
+      hint: '用法：nexi repair <host-id> 或 --all [--dry-run]；清掉 nexi 在配置里留下的半截标记，之后可重新 install。',
+      hosts: HOSTS.map((h) => h.id),
+    });
+    return 2;
+  }
+
+  const rows = [];
+  for (const id of ids) {
+    const r = repairHost(id, { dryRun, path: typeof flags.path === 'string' ? flags.path : undefined });
+    rows.push({ id, ...r });
+  }
+  const fixed = rows.filter((r) => r.changed);
+  const broken = rows.filter((r) => !r.ok);
+  if (wantAll) {
+    // --all 时只报有动静的，避免 30 行 "clean" 把有用的信息淹了
+    print({
+      ok: broken.length === 0,
+      dryRun,
+      repaired: fixed.map((r) => ({ id: r.id, removed: r.removed, backup: r.backup })),
+      failed: broken.map((r) => ({ id: r.id, reason: r.reason, message: r.message })),
+      unchanged: rows.length - fixed.length - broken.length,
+    });
+  } else {
+    print(rows[0]);
+  }
+  return broken.length ? 1 : 0;
 }
 
 /**
@@ -1270,6 +1372,9 @@ function cmdHost() {
         installed: Boolean(det && det.installed),
         path: p,
         docs: h.docs || '',
+        // 这条路径是怎么来的：官方文档核对过（docs）、本机真装过（verified）、
+        // 还是社区约定（community）。用户有权知道自己信的是哪一档。
+        confidence: h.confidence || 'docs',
       };
     });
     if (flags.json) {
@@ -1288,17 +1393,22 @@ function cmdHost() {
         if (home && s.startsWith(home)) return `~${s.slice(home.length)}`;
         return s;
       };
-      const lines = ['| 宿主 | id | 配置形状 | 自定义 | 配置文件 | 官方文档 |', '| --- | --- | --- | --- | --- | --- |'];
+      const conf = { verified: '本机实装', docs: '文档核对', community: '社区约定' };
+      const lines = ['| 宿主 | id | 配置形状 | 依据 | 自定义 | 配置文件 | 官方文档 |', '| --- | --- | --- | --- | --- | --- | --- |'];
       for (const r of rows) {
-        lines.push(`| ${r.label} | \`${r.id}\` | ${r.shape} | ${r.source === 'custom' ? '是' : ''} | \`${tilde(r.path)}\` | ${r.docs || ''} |`);
+        lines.push(`| ${r.label} | \`${r.id}\` | ${r.shape} | ${conf[r.confidence] || r.confidence} | ${r.source === 'custom' ? '是' : ''} | \`${tilde(r.path)}\` | ${r.docs || ''} |`);
       }
       print(lines.join('\n'));
       return 0;
     }
     const lines = [`接入表：${rows.length} 个（内置 ${BUILTIN_HOSTS.length} + 自定义 ${rows.length - BUILTIN_HOSTS.length}）`,
-      `自定义目录：${custom.dir}（丢一份 JSON 进去就生效，不用发版）`, ''];
+      `自定义目录：${custom.dir}（丢一份 JSON 进去就生效，不用发版）`,
+      // 「依据」三档全标出来，包括最常见的那档 —— 只标异常档等于让人以为"没标的就是信得过"。
+      `依据：✓ 本机已装 · [已实装] 真装过并核过写入 · [仅文档] 照官方文档写、没真装 · [社区约定] 推测`, ''];
     for (const r of rows) {
-      lines.push(`  ${r.installed ? '✓' : '·'} ${r.id.padEnd(16)} ${String(r.shape).padEnd(16)} ${r.source === 'custom' ? '[自定义] ' : ''}${r.path}`);
+      const conf = r.confidence === 'community' ? '[社区约定] '
+        : (r.confidence === 'verified' ? '[已实装] ' : '[仅文档] ');
+      lines.push(`  ${r.installed ? '✓' : '·'} ${r.id.padEnd(16)} ${String(r.shape).padEnd(16)} ${r.source === 'custom' ? '[自定义] ' : ''}${conf}${r.path}`);
     }
     const problems = [...HOST_REGISTRY_PROBLEMS, ...custom.problems];
     if (problems.length) {
@@ -1391,6 +1501,13 @@ function help() {
     --check                   只问一句"有没有新版"（唯一会联网的入口，需显式调用）
   nexi rollback               切回上一版（宿主路径不变）
   nexi version                看当前固定目录版本和稳定启动器
+  nexi config [host|--all]    直接给出接入配置，不需要装那个宿主（--out <文件> 写出来）
+  nexi relay                  起跨机中继服务器（别的电脑靠它协作）
+    --port <N>                端口（默认 8787）
+    --token <TOKEN>           连接口令；不给会自动生成并打印
+  nexi serve                  只跑 HTTP/MCP 服务，不起 Hub（给反向代理/容器用）
+    --host <地址>             监听地址（默认 127.0.0.1）
+    --port <N>                端口（默认 8790）
   nexi logs                   最近的运行日志（JSONL 落盘，按天轮转）
     --tail <N>                看最后 N 条（默认 30）
     --json                    原样输出 JSON 行（给 grep / jq）
@@ -1410,6 +1527,8 @@ function help() {
     --last                    回滚到最近一份（回滚前会再备份一次，可撤销）
     --to <文件>               回滚到指定备份
     --dry-run                 只说要做什么
+  nexi repair <host>|--all    清掉 nexi 在配置里留下的半截标记（install 拒绝写入时的出口）
+    --dry-run                 只说要删什么，不动文件
   nexi verify-host <host>|--all  宿主认证：装→宿主自己确认→卸→配置逐字节还原（--record 写证据）
   nexi status                 一行状态
   nexi jobs                   看定时任务 / 待审批 / 最近执行
@@ -1417,6 +1536,8 @@ function help() {
   nexi resume                 恢复自动化
   nexi approve <审批号>       放行一条待审批（立刻执行那一次）
   nexi deny <审批号> [原因]   拒绝一条待审批
+  nexi pet                    桌宠窗口（Ctrl+C 关闭；其余参数原样传给桌宠）
+  nexi help [--md]            就是这一页；--md 输出成 Markdown 表格
 
 宿主 id：${HOSTS.map((h) => h.id).join(', ')}`);
   return 0;
@@ -1458,6 +1579,7 @@ const table = {
   deny: cmdDeny,
   pet: cmdPet,
   config: cmdConfig,
+  repair: cmdRepair,
   relay: cmdRelay,
   serve: cmdServe,
   help,
@@ -1465,9 +1587,43 @@ const table = {
   '-h': help,
 };
 
+/**
+ * 拼错的子命令：给一个"最接近的那个"。
+ * 为什么值得写：`nexi instal codex` 这种手滑，如果只是打一页帮助就退出 0，
+ * 脚本/CI 会以为装成功了 —— 假成功比报错难查得多。
+ */
+function nearestCommand(input, names) {
+  const s = String(input || '').toLowerCase();
+  if (!s) return null;
+  const dist = (a, b) => {
+    const m = a.length; const n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, i) => i);
+    for (let i = 1; i <= m; i += 1) {
+      const cur = [i];
+      for (let j = 1; j <= n; j += 1) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[n];
+  };
+  let best = null;
+  for (const name of names) {
+    const d = dist(s, name);
+    if (d <= Math.max(1, Math.floor(name.length / 3)) && (!best || d < best.d)) best = { name, d };
+  }
+  return best ? best.name : null;
+}
+
 const run = table[cmd] || (() => {
-  log(`不认识子命令：${cmd}`);
-  return help();
+  const guess = nearestCommand(cmd, Object.keys(table).filter((k) => !k.startsWith('-')));
+  log(`不认识子命令：${cmd}${guess ? `；你是想输 \`nexi ${guess}\` 吗？` : ''}`);
+  // 顺手把帮助打出来：让人不用再猜一次（CLI 里 --help 是只读的，这里也一样）。
+  help();
+  // 但退出码必须是 2 —— 打一页帮助然后退出 0 会让脚本以为成功了，假成功比报错难查。
+  return 2;
 });
 
 /** 日志里的参数：把密钥类值抹掉，其余原样（太长会在 log.js 里再截断）。 */

@@ -37,8 +37,9 @@ function run(args, env = {}) {
   return r;
 }
 
-test('内置表覆盖 25 个宿主，且没有重复 id', () => {
-  assert.ok(BUILTIN_HOSTS.length >= 26, `内置宿主只有 ${BUILTIN_HOSTS.length} 个`);
+test('内置表覆盖 30 个宿主，且没有重复 id', () => {
+  // 门槛只升不降：删宿主必须同时改这里，避免「某次重构悄悄少一家」。
+  assert.ok(BUILTIN_HOSTS.length >= 30, `内置宿主只有 ${BUILTIN_HOSTS.length} 个`);
   const ids = HOSTS.map((h) => h.id);
   assert.equal(new Set(ids).size, ids.length, 'HOSTS 里有重复 id');
   for (const h of HOSTS) {
@@ -46,6 +47,10 @@ test('内置表覆盖 25 个宿主，且没有重复 id', () => {
     // auto = 同一个宿主两代格式并存（Continue 的 config.yaml / config.json），
     // 按目标文件扩展名决定写入器，不算"没写 kind"。
     assert.ok(['json', 'toml', 'yaml', 'auto'].includes(h.kind), `${h.id} 的 kind 不对：${h.kind}`);
+    // 每个宿主都要有官方文档地址：接入表是给人看的，不能只有 id
+    assert.match(h.docs || '', /^https:\/\//, `${h.id} 没有 https 文档地址`);
+    // 置信度只能是这三档；community = 路径来自社区约定，没进官方文档
+    assert.ok([undefined, 'docs', 'verified', 'community'].includes(h.confidence), `${h.id} 的 confidence 不认识：${h.confidence}`);
   }
 });
 

@@ -43,6 +43,7 @@ const PLATFORM_BRANCH_ALLOWLIST = {
   'lib/diagnostics.js': '诊断包要如实报告宿主平台与架构（排障第一手信息）',
   'lib/connect/audit.js': '路径比较要按系统处理大小写（Windows 不区分）',
   'bin/nexi.mjs': 'where 要跨系统预览三种落点、doctor 要报告机器信息',
+  'lib/connect/exec.js': 'Windows 的 .cmd 垫片必须过 cmd.exe 且要自己拼引号 —— 这是操作系统差异，不是业务分岔',
 };
 
 /** 递归列出某目录下的 .js / .mjs 源码（不碰 node_modules）。 */

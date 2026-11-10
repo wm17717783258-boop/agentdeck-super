@@ -75,4 +75,6 @@ test('未知子命令：报错但不崩', () => {
   const r = spawnSync(process.execPath, [NEXI, 'no-such-command'], { cwd: REPO, encoding: 'utf8', timeout: 30_000 });
   assert.match(`${r.stdout}${r.stderr}`, /不认识子命令/, '未知子命令要明确说"不认识"');
   assert.match(r.stdout, /用法：/, '顺手把帮助打出来，别让人再猜一次');
+  // 退出码必须是 2：只打帮助退出 0 会让 `nexi instal` 这种手滑在 CI 里"看起来成功"
+  assert.equal(r.status, 2, '未知子命令必须以非 0 退出，否则脚本查不出拼错');
 });
