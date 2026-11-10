@@ -58,3 +58,13 @@ certs/
 
 dist/
 *.zip
+
+# 提交信息草稿：`git commit -F .commitmsg` 用的，写一次就删，别让它自己跑进提交
+.commitmsg
+
+# 打包探针：解包后真跑一遍 npm run smoke 用的临时目录
+.packprobe/
+
+# 一次性改动脚本（node .patch.mjs 这种）
+.patch.mjs
+.e2e.bak
