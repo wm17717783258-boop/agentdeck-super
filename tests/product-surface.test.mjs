@@ -185,3 +185,22 @@ test('失败必须带"怎么办"：几个典型失败场景都不许只有一句
     assert.ok(actionable, `nexi ${args.join(' ')} 只说错了没说怎么办：${text.slice(0, 200)}`);
   }
 });
+
+// ── ⑥ 那条"证明它能跑"的脚本，自己必须有测试盯着 ──────────────────────────────
+
+test('冒烟自检必须是 5/5：不许长期挂着一条失败', () => {
+  // tests/e2e-local.mjs 是用户装完后 `npm run smoke` 跑的东西 —— 它是"这东西真能跑"的
+  // 唯一证据。但它自己不在 tests/*.test.mjs 里，所以 `npm test` 从来不跑它。
+  // 后果实测过：跨机协同那条断言盯错了小组（查客人自建的组，而不是房间绑定的组），
+  // 于是长期报 4/5。用户装完看到"有一条失败"，第一反应是软件坏了。
+  // 没有测试守着的验收脚本，一定会腐烂 —— 这条就是给它配的看门人。
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'tests', 'e2e-local.mjs')], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 240_000,
+    env: { ...process.env, NEXI_LOG: '0' },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  assert.match(out, /汇总：5\/5 步通过/, `冒烟自检不是满通过：\n${out.split('\n').filter((l) => l.includes('✗')).join('\n')}`);
+  assert.equal(r.status, 0, `冒烟自检退出码 ${r.status}`);
+});

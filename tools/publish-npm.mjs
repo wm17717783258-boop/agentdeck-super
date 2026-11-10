@@ -127,11 +127,16 @@ try {
 
 log('\n[3/5] 跑全量测试（串行，避免 spawn 用例假超时）');
 try {
-  const out = execFileSync(NODE, ['--test', '--test-concurrency=1', 'tests/*.test.mjs'], { cwd: root, encoding: 'utf8' });
-  const pass = (out.match(/ℹ pass (\d+)/) || [])[1];
-  const fail = (out.match(/ℹ fail (\d+)/) || [])[1];
+  const out = execFileSync(NODE, ['--test', '--test-concurrency=1', 'tests/*.test.mjs'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // 两种汇总格式都要认：裸 `node --test` 出 TAP（`# pass 1399`），
+  // 项目入口 tools/test-summary.mjs 出 spec（`ℹ pass 1399`）。
+  // 以前只认后者，所以这里长期显示 `pass ?` —— 发布体检时看不到真实用例数。
+  const stat = (name) => (out.match(new RegExp(`(?:ℹ|#) ${name} (\\d+)`)) || [])[1];
+  const pass = stat('pass');
+  const fail = stat('fail');
   if (Number(fail) > 0) throw new Error(`有 ${fail} 条用例失败`);
-  ok(`全量用例通过（pass ${pass ?? '?'}，fail ${fail ?? 0}）`);
+  if (pass === undefined) throw new Error('没解析到用例数 —— 测试输出格式变了，先修这个再发（别让体检显示 pass ?）');
+  ok(`全量用例通过（pass ${pass}，fail ${fail ?? 0}）`);
 } catch (err) {
   bad('测试没过，先修测试再发');
   console.log(String(err.stdout || '').split('\n').slice(-25).join('\n'));

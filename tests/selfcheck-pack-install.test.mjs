@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -96,7 +96,8 @@ test('交付包：真 npm pack → 中文+空格路径解包 → 全新 HOME 起
       'lib/pro-resolve.js',
       'lib/pet/persona.js',
       'lib/hosting/index.js',
-      'tests/cli.test.mjs',
+      // 只留这一个测试入口：`npm run smoke` 靠它，装完第一条命令要能跑通
+      'tests/e2e-local.mjs',
       'tests/fixtures/fake-agent.mjs',
       'tests/fixtures/fake-agent.cmd',
       'docs/操作手册.md',
@@ -106,6 +107,18 @@ test('交付包：真 npm pack → 中文+空格路径解包 → 全新 HOME 起
     ]) {
       assert.equal(existsSync(join(pkgDir, rel)), true, `交付包缺文件：${rel}`);
     }
+
+    // 测试文件不进公开包：用户 node_modules 里不该堆着上百个测试。
+    // 这条以前是反过来的（必含 tests/cli.test.mjs），等于把"包里有一堆测试"当成了正确答案。
+    const strayTests = [];
+    (function walk(d) {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const full = join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (/\.test\.mjs$/.test(e.name)) strayTests.push(full.slice(pkgDir.length + 1));
+      }
+    })(pkgDir);
+    assert.deepEqual(strayTests, [], `公开包里混进了测试文件（${strayTests.length} 个）：${strayTests.slice(0, 5).join(', ')}`);
 
     // 闭源商业层绝不能出现在公开包里 —— 这是拆分的底线，写进测试来守。
     for (const forbidden of ['pro', 'pro/billing', 'pro/market', 'pro/sync', 'pro/meeting']) {

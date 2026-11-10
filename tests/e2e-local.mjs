@@ -192,11 +192,17 @@ await step('4', '跨机协同：真 relay + 真建房 + 真邀请 + 任务双向
   // 客人拉下来 → 在自己的板子上看到 → 认领并做掉
   const pulled = await guest.pull();
   assert(pulled.ok, `拉取失败：${pulled.reason}`);
-  const guestTasks = boardB.listTasks(teamB.id, {});
-  assert(guestTasks.length >= 1, `客人那边没收到任务（applied=${pulled.applied}）`);
+  // 注意查的是**房间绑定的小组**，不是客人自己建的"外包组"：
+  // 进房时房主的小组 id 会带过来（lib/room.js 里 teamId 被改写），本机据此复刻同一个小组。
+  // 协作要共用一个组，否则双方各看各的板子。这里以前查 teamB.id，所以永远查不到 —— 
+  // 冒烟自检长期报 4/5，看起来像软件坏了，实际是断言盯错了对象。
+  const roomTeam = joined.room.teamId;
+  assert(roomTeam, '进房后没拿到房间绑定的小组 id');
+  const guestTasks = boardB.listTasks(roomTeam, {});
+  assert(guestTasks.length >= 1, `客人那边没收到任务（applied=${pulled.applied}，查的小组 ${roomTeam}）`);
   const gt = guestTasks.find((t) => t.title === '把落地页改一版');
   assert(gt, '收到的任务标题对不上');
-  assert(boardB.claimTask(teamB.id, gt.id, '同事小张'), '客人认领失败');
+  assert(boardB.claimTask(roomTeam, gt.id, '同事小张'), '客人认领失败');
   const ref = guest.refFor(gt.id);
   await guest.push([{ kind: 'task/claim', payload: { ...ref, memberName: '同事小张' } }]);
   await guest.push([{ kind: 'task/done', payload: { ...ref, summary: '落地页新版已上线', memberName: '同事小张' } }]);
@@ -208,9 +214,9 @@ await step('4', '跨机协同：真 relay + 真建房 + 真邀请 + 任务双向
   assert(finalTask.status === 'done', `房主侧任务状态应为 done，实际 ${finalTask.status}`);
   assert(finalTask.assignee === '同事小张', `房主侧执行人应为"同事小张"，实际 ${finalTask.assignee}`);
 
-  // 幂等：再拉一次不产生重复
+  // 幂等：再拉一次不产生重复（同样看房间绑定的小组）
   await guest.pull();
-  assert(boardB.listTasks(teamB.id, {}).length === guestTasks.length, '重复同步产生了重复任务');
+  assert(boardB.listTasks(roomTeam, {}).length === guestTasks.length, '重复同步产生了重复任务');
 
   return `房间 ${roomId.slice(0, 8)}…，2 人，任务跨机器往返一次，幂等通过`;
 });
