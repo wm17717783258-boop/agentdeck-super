@@ -1,6 +1,6 @@
 {
   "name": "agentdeck-super",
-  "version": "1.11.18",
+  "version": "1.11.19",
   "mcpName": "io.github.wm17717783258-boop/agentdeck-super",
   "description": "Nexi 灵犀：超级 Agent + 多 Agent 小组协作 + MCP 网关。一个会自己干活的 Agent，能把本机 CLI、ACP、OpenAI 兼容、桌面 App、自研桥接的多类 Agent 编成小组，并用一条命令把同一套能力接进 Claude/Cursor/Codex 等宿主。",
   "type": "module",

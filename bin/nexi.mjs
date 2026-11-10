@@ -25,11 +25,15 @@ import { createHub } from '../lib/hub.js';
 import { serveStdio } from '../lib/mcp/server.js';
 import {
   HOSTS, BUILTIN_HOSTS, HOST_REGISTRY_PROBLEMS, detectHosts, installHost, uninstallHost, installAll, launchCommand,
-  buildSnippet, adHocHost, shapeKeys, shapeKeyOf, kindFor,
+  buildSnippet, adHocHost, shapeKeys, shapeKeyOf, kindFor, restoreHost,
 } from '../lib/connect/hosts.js';
+import { listBackups, backupSummary, DEFAULT_KEEP } from '../lib/connect/backup.js';
+import { lockState } from '../lib/connect/lock.js';
 import { hostsDir, saveCustomHost, removeCustomHost, loadCustomHosts } from '../lib/connect/registry.js';
 import { platformCtx } from '../lib/connect/platform.js';
 import { verifyHost, recordHostsEvidence, summarize } from '../lib/connect/verify.js';
+import { buildDiagnostics } from '../lib/diagnostics.js';
+import { auditHost, describeAudit } from '../lib/connect/audit.js';
 import { readVersion } from '../lib/version.js';
 import { planSelfRemoval, removeSelf, describePlan } from '../lib/selfremove.js';
 import { logEvent, readTail, clearLogs, logsDir, formatEntry } from '../lib/log.js';
@@ -83,6 +87,7 @@ const VALUE_FLAGS = {
   name: 'name',
   tail: 'tail',
   day: 'day',
+  to: 'to',
 };
 
 function parseFlags(args) {
@@ -95,6 +100,8 @@ function parseFlags(args) {
     else if (a === '--force') flags.force = true;
     else if (a === '--json') flags.json = true;
     else if (a === '--md') flags.md = true;
+    else if (a === '--last') flags.last = true;
+    else if (a === '--export') flags.export = true;
     else if (a === '--toml') flags.toml = true;
     else if (a === '--record') flags.record = true;
     else if (a === '--portable') flags.portable = true;
@@ -135,14 +142,18 @@ async function hubOptionsFromEnv() {
   };
 }
 
-/** 宿主配置文件里到底有没有 nexi —— 只看「宿主装没装」会漏掉最关键的一步。 */
-function nexiRegistered(host) {
-  if (!host || !host.installed || !host.path) return false;
-  try {
-    return /nexi/i.test(readFileSync(host.path, 'utf8'));
-  } catch {
-    return false;
+/**
+ * 宿主到底接通了没有 —— 四层校验，不是全文搜 "nexi"。
+ *
+ * 旧实现是 `/nexi/i.test(读全文)`，它会把这些情况全判成"已注册"：
+ * 条目指向的脚本已被删、command 的 node 路径不存在、注释里提到 nexi、
+ * 别家 server 名字里带 nexi。假绿比红更糟 —— 用户看到 ✅ 就不再查了。
+ */
+function auditOf(host, currentLaunch) {
+  if (!host || !host.installed || !host.path) {
+    return { id: host && host.id, state: 'absent', reason: '宿主没装' };
   }
+  return auditHost(host, { file: host.path, currentLaunch });
 }
 
 /**
@@ -219,9 +230,15 @@ async function cmdDoctor() {
     hubErr = err.message;
   }
 
-  const hosts = detectHosts().map((h) => ({ ...h, registered: nexiRegistered(h) }));
+  const currentLaunch = launchCommand();
+  const hosts = detectHosts().map((h) => {
+    const audit = auditOf(h, currentLaunch);
+    return { ...h, audit, registered: audit.state === 'wired' };
+  });
   const live = hosts.filter((h) => h.installed);
   const wired = live.filter((h) => h.registered);
+  // 装了但接不上（脚本没了 / node 没了 / 条目是注释）—— 这是真故障，不是"没装"
+  const brokenWiring = live.filter((h) => !h.registered);
 
   // 宿主实际会跑哪一份代码：插件走 git、固定目录走 npm，两条分发路径会脱节。
   // 用户在 npm 上跑 `@latest doctor` 看到新版本，宿主里跑的却还是上次 --all 装的那份 ——
@@ -237,9 +254,20 @@ async function cmdDoctor() {
     checks.push({ name: 'hub', ok: tools.length > 0, detail: hubErr || `${tools.length} 个工具`, tools });
     checks.push({
       name: 'hosts',
-      ok: true,
-      detail: `${live.length}/${hosts.length} 已安装`,
-      hosts: hosts.map((h) => ({ id: h.id, label: h.label, installed: h.installed, registered: h.registered, path: h.path })),
+      // 以前这里永远为真 —— 装了但条目指向已删脚本也算"过关"，等于体检盖章放行。
+      ok: brokenWiring.length === 0,
+      detail: brokenWiring.length
+        ? `${live.length}/${hosts.length} 已安装，${brokenWiring.length} 个接不上`
+        : `${live.length}/${hosts.length} 已安装，全部接通`,
+      hosts: hosts.map((h) => ({
+        id: h.id,
+        label: h.label,
+        installed: h.installed,
+        registered: h.registered,
+        audit: h.audit && h.audit.state,
+        auditReason: (h.audit && (h.audit.reason || h.audit.note)) || '',
+        path: h.path,
+      })),
     });
     const launch = launchCommand();
     checks.push({
@@ -268,11 +296,8 @@ async function cmdDoctor() {
     lines.push('     Claude Code / Codex / Gemini CLI / dsh 装一个，再回来跑这条命令');
   } else {
     for (const h of live) {
-      lines.push(
-        h.registered
-          ? `  ✅ ${h.label}  已注册`
-          : `  ❌ ${h.label}  宿主装了但没接上 → 跑 nexi install --all`,
-      );
+      const a = h.audit || {};
+      lines.push(`  ${h.registered ? '✅' : '❌'} ${h.label}  ${describeAudit(a)}`);
     }
     // 没装的宿主**折成一行**：接入表有 25 个，一家一行会把结论顶出屏幕 ——
     // 用户要的是"我这台能不能用"，不是"世界上还有多少家没装"。
@@ -331,7 +356,8 @@ async function cmdDoctor() {
   lines.push(`│ 机器 ${process.platform}/${process.arch} · node ${process.versions.node}`);
   lines.push(`│ 版本 ${version}`);
   // 诊断块是给人复制粘贴的：25 家全铺开一行太长，只列已装的 + 总数。
-  lines.push(`│ 宿主 ${wired.length}/${hosts.length} 已接 · ${live.length ? live.map((h) => `${h.id}=${h.registered ? 'ok' : '未接'}`).join(' ') : '一台都没装'}`);
+  // 26 个宿主全列出来会把结论顶出屏幕；只说结论 + 谁出问题。
+  lines.push(`│ 宿主 ${wired.length}/${hosts.length} 已接${brokenWiring.length ? ` · 接不上：${brokenWiring.map((h) => h.id).join(',')}` : ''}`);
   if (fn.length) lines.push(`│ 功能 ${fn.map((f) => `${f.key}=${f.ok ? 'ok' : '失败'}`).join(' ')}`);
   else lines.push('│ 功能 （--quick 跳过）');
   lines.push(`│ 结论 ${bad.length ? 'FAIL' : 'PASS'}`);
@@ -345,6 +371,23 @@ async function cmdDoctor() {
     bad: bad.join(','),
   });
   print(lines.join('\n'));
+
+  // --export：把这次体检连同宿主清单、配置结构、日志尾部打包成可直接发出的目录。
+  // 只导结构不导内容 —— 配置里可能有 key，诊断包不该成为泄密包。
+  if (flags.export) {
+    const diag = buildDiagnostics({
+      version,
+      doctorText: lines.join('\n'),
+      outDir: typeof flags.out === 'string' ? resolve(flags.out) : process.cwd(),
+    });
+    print([
+      '',
+      `诊断包：${diag.dir}`,
+      `${diag.files.length} 个文件，${(diag.bytes / 1024).toFixed(1)} KB。`,
+      '里面没有 API key、token、配置原文，家目录都缩成了 ~，可以直接发出去。',
+    ].join('\n'));
+  }
+
   return bad.length ? 1 : 0;
 }
 
@@ -380,7 +423,10 @@ async function cmdInstall() {
   const flags = parseFlags(rest);
   // --portable：配置里写裸 `node` 而不是本机 node 的绝对路径。
   // 什么时候用：这份配置要被拷到别的电脑、或者你不知道对面 node 装在哪。
-  const opts = { dryRun: flags.dryRun, force: flags.force, portable: flags.portable === true };
+  // name：同一个 Agent 里装多份 nexi（不同参数/不同工作区）时给条目换个名字。
+  // 以前只有"走宿主 CLI"那条路认它，写配置文件那条路硬编码 nexi —— 于是 --name 静默失效。
+  const entryName = typeof flags.name === 'string' && flags.name.trim() ? flags.name.trim() : undefined;
+  const opts = { dryRun: flags.dryRun, force: flags.force, portable: flags.portable === true, name: entryName };
   if (flags.all) {
     const results = installAll(opts);
     print(results);
@@ -479,6 +525,64 @@ async function cmdUninstall() {
  *
  * 没有 --yes 就只算计划、不动手：这是不可逆操作，默认不该"手快就没了"。
  */
+/**
+ * nexi restore —— 从备份回滚某个宿主的配置。
+ *
+ * 为什么需要：从 1.11.x 起每次写入前都会备份，但"有备份"不等于"能回滚"——
+ * 用户得自己去配置目录里翻一堆带时间戳的文件，还得判断哪个是装之前、
+ * 哪个是卸之前。这条命令把这件事变成一句话。
+ */
+async function cmdRestore() {
+  const flags = parseFlags(rest);
+  const id = flags._[0];
+
+  // 不带宿主：列出所有"有备份可回"的宿主，让人知道能救谁
+  if (!id) {
+    const rows = [];
+    for (const h of detectHosts()) {
+      if (!h.installed || !h.path) continue;
+      const sum = backupSummary(h.path);
+      if (!sum.count) continue;
+      rows.push({ id: h.id, label: h.label, path: h.path, count: sum.count, bytes: sum.bytes, latest: sum.latest });
+    }
+    print({ hint: 'nexi restore <host> 看这个宿主有哪些备份；加 --last 回滚到最近一份', hosts: rows });
+    return 0;
+  }
+
+  const opts = {
+    last: flags.last === true,
+    to: typeof flags.to === 'string' ? flags.to : undefined,
+    path: typeof flags.path === 'string' ? flags.path : undefined,
+    dryRun: flags.dryRun === true,
+  };
+  const r = restoreHost(id, opts);
+
+  if (r.ok && r.listed) {
+    const rows = (r.backups || []).map((b, i) => ({
+      序号: i + 1,
+      时间: b.at,
+      来由: b.why,
+      大小: b.size,
+      文件: b.path,
+    }));
+    print({
+      ok: true,
+      host: id,
+      path: r.path,
+      hint: `共 ${rows.length} 份。回滚最近一份：nexi restore ${id} --last`,
+      backups: rows,
+    });
+    return 0;
+  }
+
+  if (r.reason === 'no-backup') {
+    print({ ok: false, host: id, path: r.path, hint: '这个宿主还没有备份（第一次写入前才会生成）' });
+    return 1;
+  }
+  print(r);
+  return r.ok ? 0 : 1;
+}
+
 async function cmdUninstallSelf(flags) {
   const home = typeof flags.home === 'string' ? flags.home : defaultHome();
   const opts = {
@@ -1275,6 +1379,8 @@ function help() {
   nexi list                   列出 Hub 工具
   nexi call <tool> [json]     直接调用一个工具
   nexi doctor                 体检（Node / Hub / 宿主探测）
+    --export                  顺手导出诊断包（不含密钥与配置原文，可直接发出去）
+    --out <目录>              诊断包放哪（默认当前目录）
   nexi setup                  固定目录安装 / 更新（默认写所有已探测宿主）
     --home <DIR>              安装根目录（默认 %LOCALAPPDATA%\Nexi）
     --bundle <tgz|URL>        从交付包安装（支持离线）
@@ -1300,6 +1406,10 @@ function help() {
   nexi uninstall --self       把自己卸干净（宿主条目 + 安装目录 + 状态目录）
     --yes                     确认执行（不加只打印计划）
     --keep-state              保留授权 / 账本 / 任务板 / 宿主注册表
+  nexi restore <host>         看这个宿主有哪些配置备份
+    --last                    回滚到最近一份（回滚前会再备份一次，可撤销）
+    --to <文件>               回滚到指定备份
+    --dry-run                 只说要做什么
   nexi verify-host <host>|--all  宿主认证：装→宿主自己确认→卸→配置逐字节还原（--record 写证据）
   nexi status                 一行状态
   nexi jobs                   看定时任务 / 待审批 / 最近执行
@@ -1337,6 +1447,7 @@ const table = {
   host: cmdHost,
   snippet: cmdSnippet,
   uninstall: cmdUninstall,
+  restore: cmdRestore,
   logs: cmdLogs,
   'verify-host': cmdVerifyHost,
   status: cmdStatus,
